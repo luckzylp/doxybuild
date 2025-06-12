@@ -23,7 +23,6 @@ jobs:
       - name: Get latest release tag
         id: get_tag
         run: |
-          # Fetch latest release tag from Doxygen official repo
           LATEST_TAG=$(curl -s "https://api.github.com/repos/doxygen/doxygen/releases/latest" | jq -r '.tag_name')
           echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
           echo "Using latest tag: $LATEST_TAG"
@@ -31,7 +30,6 @@ jobs:
       - name: Determine build ref
         id: get_ref
         run: |
-          # Use custom ref if provided, otherwise use latest tag
           if [ -n "${{ github.event.inputs.ref }}" ]; then
             echo "Using custom ref: ${{ github.event.inputs.ref }}"
             echo "ref=${{ github.event.inputs.ref }}" >> $GITHUB_OUTPUT
@@ -45,14 +43,18 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            # Get commit SHA for specified ref using GitHub API
             const ref = '${{ steps.get_ref.outputs.ref }}';
-            const response = await github.rest.repos.getCommit({
-              owner: 'doxygen',
-              repo: 'doxygen',
-              ref: ref
-            });
-            return response.data.sha;
+            try {
+              const response = await github.rest.repos.getCommit({
+                owner: 'doxygen',
+                repo: 'doxygen',
+                ref: ref
+              });
+              return response.data.sha;
+            } catch (error) {
+              console.error(`Error fetching commit for ref '${ref}': ${error}`);
+              throw error;
+            }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
