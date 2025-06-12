@@ -202,8 +202,8 @@ jobs:
               -Dbuild_doc=YES
               -Dbuild_wizard=YES
               ${{ matrix.config.cmake_extra_opts }}
-	      ${LINKER_FLAGS}
-            RESULT_VARIABLE result
+              ${LINKER_FLAGS}
+              RESULT_VARIABLE result
           )
           if (NOT result EQUAL 0)
             message(FATAL_ERROR "Bad exit status")
