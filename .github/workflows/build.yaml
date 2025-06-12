@@ -355,6 +355,9 @@ jobs:
           RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}"
           COMMIT_SHA="${{ needs.get-latest-tag.outputs.commit_sha }}"
 
+          # Clean up possible line breaks
+          COMMIT_SHA=$(echo "$COMMIT_SHA" | tr -d '\n')
+
           # Create tag if doesn't exist
           if ! git rev-parse $RELEASE_TAG >/dev/null 2>&1; then
             echo "Creating tag $RELEASE_TAG pointing to $COMMIT_SHA"
@@ -364,13 +367,14 @@ jobs:
 
           # Create release targeting specific commit SHA
           if ! gh release view $RELEASE_TAG >/dev/null 2>&1; then
-            gh release create $RELEASE_TAG \
+            # Correct syntax: --target <commit>
+            gh release create "$RELEASE_TAG" \
               --title "Doxygen $RELEASE_TAG" \
               --notes "Automated build from official source" \
-              --target $COMMIT_SHA
+              --target "$COMMIT_SHA"
           fi
 
           # Upload all artifacts to release
           find all_artifacts -type f | while read file; do
-            gh release upload $RELEASE_TAG "$file" --clobber
+            gh release upload "$RELEASE_TAG" "$file" --clobber
           done
