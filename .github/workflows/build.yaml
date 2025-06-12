@@ -8,6 +8,9 @@ on:
         required: false
         default: ""
 
+permissions:
+  contents: write
+
 jobs:
   # Job to determine the latest release tag
   get-latest-tag:
@@ -15,6 +18,7 @@ jobs:
     outputs:
       release_tag: ${{ steps.get_tag.outputs.latest_tag }}
       release_ref: ${{ steps.get_ref.outputs.ref }}
+      commit_sha: ${{ steps.get_sha.outputs.commit_sha }}
     steps:
       - name: Get latest release tag
         id: get_tag
@@ -35,6 +39,21 @@ jobs:
             echo "Using latest tag as ref: ${{ steps.get_tag.outputs.latest_tag }}"
             echo "ref=${{ steps.get_tag.outputs.latest_tag }}" >> $GITHUB_OUTPUT
           fi
+
+      - name: Get commit SHA for ref
+        id: get_sha
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ref = '${{ steps.get_ref.outputs.ref }}';
+            const response = await github.rest.repos.getCommit({
+              owner: 'doxygen',
+              repo: 'doxygen',
+              ref: ref
+            });
+            return response.data.sha;
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build:
     permissions:
@@ -192,6 +211,7 @@ jobs:
             message(FATAL_ERROR "Bad exit status")
           endif()
 
+      # Build step
       - name: Build
         shell: cmake -P {0}
         run: |
@@ -210,12 +230,6 @@ jobs:
             message("::error::${error_message}")
             message(FATAL_ERROR "Build failed")
           endif()
-
-      - name: Archive build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: "${{ matrix.config.name }} build artifacts"
-          path: build/bin/
 
       - name: Run tests (Linux)
         shell: cmake -P {0}
@@ -258,7 +272,7 @@ jobs:
           endif()
         if: matrix.config.name == 'Ubuntu Latest GCC Release x86_64'
 
-      # Prepare artifacts
+      # Prepare artifacts for release
       - name: Prepare artifacts
         run: |
           # Create output directory
@@ -288,7 +302,7 @@ jobs:
           echo "OS: ${{ matrix.config.os }}" >> artifacts/build-info.txt
           echo "Compiler: ${{ matrix.config.cc }}" >> artifacts/build-info.txt
           echo "Build Type: ${{ matrix.config.build_type }}" >> artifacts/build-info.txt
-          echo "Commit: ${{ github.sha }}" >> artifacts/build-info.txt
+          echo "Commit: ${{ needs.get-latest-tag.outputs.commit_sha }}" >> artifacts/build-info.txt
           echo "Build Date: $(date)" >> artifacts/build-info.txt
         shell: bash
 
@@ -318,6 +332,11 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
 
+      - name: Fetch doxygen commit
+        run: |
+          # Fetch the specific commit from doxygen repo
+          git fetch https://github.com/doxygen/doxygen.git ${{ needs.get-latest-tag.outputs.commit_sha }} --depth=1
+
       - name: Install GitHub CLI
         run: sudo apt-get update && sudo apt-get install -y gh
 
@@ -334,23 +353,24 @@ jobs:
       - name: Create Release
         run: |
           RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}"
+          COMMIT_SHA="${{ needs.get-latest-tag.outputs.commit_sha }}"
 
-          # Make sure the label exists.
+          # Create tag if doesn't exist
           if ! git rev-parse $RELEASE_TAG >/dev/null 2>&1; then
-            echo "Tag $RELEASE_TAG doesn't exist, creating..."
-            git tag $RELEASE_TAG
+            echo "Creating tag $RELEASE_TAG pointing to $COMMIT_SHA"
+            git tag $RELEASE_TAG $COMMIT_SHA
             git push origin $RELEASE_TAG
           fi
 
-          # Create or update the release
+          # Create release targeting specific commit SHA
           if ! gh release view $RELEASE_TAG >/dev/null 2>&1; then
             gh release create $RELEASE_TAG \
               --title "Doxygen $RELEASE_TAG" \
               --notes "Automated build from official source" \
-              --target $RELEASE_TAG
+              --target $COMMIT_SHA
           fi
 
-          # Upload all binary packages and document
+          # Upload all artifacts to release
           find all_artifacts -type f | while read file; do
             gh release upload $RELEASE_TAG "$file" --clobber
           done
