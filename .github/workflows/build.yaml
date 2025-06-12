@@ -294,7 +294,13 @@ jobs:
           cp build/bin/doxysearch.cgi "${PACKAGE_DIR}/bin/"
 
           # Clone specific tag version for examples
-          git clone --depth 1 --branch "$RELEASE_TAG" https://github.com/doxygen/doxygen.git doxygen-src
+          echo "Cloning doxygen repository..."
+          git clone https://github.com/doxygen/doxygen.git doxygen-src
+          # Checkout specific release tag
+          echo "Checking out tag: $RELEASE_TAG"
+          cd doxygen-src
+          git checkout "$RELEASE_TAG"
+          cd ..
           cp -r doxygen-src/examples/* "${PACKAGE_DIR}/examples/"
 
           # Copy documentation files
