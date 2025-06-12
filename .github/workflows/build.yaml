@@ -65,6 +65,7 @@ jobs:
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
     strategy:
+      fail-fast: false
       matrix:
         config:
           - {
@@ -274,11 +275,12 @@ jobs:
       # Artifact preparation with new packaging structure
       - name: Prepare artifacts
         run: |
-          # Format version number from release tag (Release_X_Y_Z → X.Y.Z)
+          # Format version number from release tag
           RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}"
           VERSION=$(echo "${RELEASE_TAG}" | sed -e 's/Release_//' -e 's/_/./g')
           PLATFORM="${{ matrix.config.os }}"
           COMPILER="${{ matrix.config.cc }}"
+          COMMIT_SHA="${{ needs.get-latest-tag.outputs.commit_sha }}"
 
           # Create package directory structure
           PACKAGE_DIR="doxygen-${VERSION}"
@@ -292,13 +294,20 @@ jobs:
           cp build/bin/doxysearch.cgi "${PACKAGE_DIR}/bin/"
 
           # Clone examples from GitHub
-          git clone --depth 1 --branch "${{ needs.get-latest-tag.outputs.release_ref }}" \
-            https://github.com/doxygen/doxygen.git doxygen-src
+          git clone --depth 1 --branch main https://github.com/doxygen/doxygen.git doxygen-src
+          cd doxygen-src
+          git checkout "$COMMIT_SHA"
+          cd ..
           cp -r doxygen-src/examples/* "${PACKAGE_DIR}/examples/"
 
           # Copy documentation files
           cp -r build/html/* "${PACKAGE_DIR}/html/"
-          cp -r build/doc/man/* "${PACKAGE_DIR}/man/"
+
+          if [ -d "build/doc/man" ]; then
+            cp -r build/doc/man/* "${PACKAGE_DIR}/man/"
+          else
+            echo "Warning: build/doc/man directory not found, skipping man pages"
+          fi
 
           # Copy and rename PDF manual
           cp build/latex/doxygen_manual.pdf "${PACKAGE_DIR}/doxygen_manual-${VERSION}.pdf"
@@ -323,7 +332,7 @@ jobs:
           echo "OS: ${{ matrix.config.os }}" >> artifacts/build-info.txt
           echo "Compiler: ${{ matrix.config.cc }}" >> artifacts/build-info.txt
           echo "Build Type: ${{ matrix.config.build_type }}" >> artifacts/build-info.txt
-          echo "Commit: ${{ needs.get-latest-tag.outputs.commit_sha }}" >> artifacts/build-info.txt
+          echo "Commit: $COMMIT_SHA" >> artifacts/build-info.txt
           echo "Build Date: $(date)" >> artifacts/build-info.txt
         shell: bash
 
