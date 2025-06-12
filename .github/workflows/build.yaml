@@ -65,7 +65,6 @@ jobs:
     name: ${{ matrix.config.name }}
     runs-on: ${{ matrix.config.os }}
     strategy:
-      fail-fast: false
       matrix:
         config:
           - {
@@ -78,9 +77,7 @@ jobs:
               cmake_extra_opts:
                 '-Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
                 -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
-                -DBUILD_SHARED_LIBS=OFF
-                -DCMAKE_SHARED_LINKER_FLAGS="-static-libgcc -static-libstdc++"
-                -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"',
+                -DBUILD_SHARED_LIBS=OFF',
             }
           - {
               name: "Ubuntu Latest Clang Release x86_64",
@@ -93,9 +90,7 @@ jobs:
                 '-Duse_libclang=YES -Dstatic_libclang=YES -Duse_libc++=NO
                 -Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
                 -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
-                -DBUILD_SHARED_LIBS=OFF
-                -DCMAKE_SHARED_LINKER_FLAGS="-static-libstdc++"
-                -DCMAKE_EXE_LINKER_FLAGS="-static -static-libstdc++"',
+                -DBUILD_SHARED_LIBS=OFF',
             }
     steps:
       - name: Checkout doxygen
@@ -192,6 +187,12 @@ jobs:
           set(ENV{CC} ${{ matrix.config.cc }})
           set(ENV{CXX} ${{ matrix.config.cxx }})
 
+          if ("${{ matrix.config.cc }}" STREQUAL "gcc")
+            set(LINKER_FLAGS "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++ -DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++")
+          else()
+            set(LINKER_FLAGS "")
+          endif()
+
           execute_process(
             COMMAND cmake
               -S .
@@ -201,6 +202,7 @@ jobs:
               -Dbuild_doc=YES
               -Dbuild_wizard=YES
               ${{ matrix.config.cmake_extra_opts }}
+	      ${LINKER_FLAGS}
             RESULT_VARIABLE result
           )
           if (NOT result EQUAL 0)
