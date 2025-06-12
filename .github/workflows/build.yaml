@@ -311,7 +311,6 @@ jobs:
           # Copy core files from source
           cp doxygen-src/INSTALL "${PACKAGE_DIR}/"
           cp doxygen-src/LICENSE "${PACKAGE_DIR}/"
-          cp doxygen-src/README "${PACKAGE_DIR}/"
           cp doxygen-src/VERSION "${PACKAGE_DIR}/"
 
           # Create compressed package
