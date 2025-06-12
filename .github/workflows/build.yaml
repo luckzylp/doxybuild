@@ -289,8 +289,8 @@ jobs:
           mkdir -p "${PACKAGE_DIR}/html"
 
           # Copy binaries to bin directory
-          cp build/bin/doxygen* "${PACKAGE_DIR}/bin/"
-          cp build/bin/doxysearch.cgi "${PACKAGE_DIR}/bin/"
+          cp build/bin/doxy* "${PACKAGE_DIR}/bin/"
+          # cp build/bin/doxysearch.cgi "${PACKAGE_DIR}/bin/"
 
           # Clone specific tag version for examples
           echo "Cloning doxygen repository..."
