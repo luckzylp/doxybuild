@@ -1,0 +1,604 @@
+name: Doxygen Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Optional: Git ref to build (branch, tag, or SHA)'
+        required: false
+        default: ''
+
+jobs:
+  # Job to determine the latest release tag
+  get-latest-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.get_tag.outputs.latest_tag }}
+      release_ref: ${{ steps.get_ref.outputs.ref }}
+    steps:
+    - name: Get latest release tag
+      id: get_tag
+      run: |
+        # Fetch latest release tag from Doxygen official repo
+        LATEST_TAG=$(curl -s "https://api.github.com/repos/doxygen/doxygen/releases/latest" | jq -r '.tag_name')
+        echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+        echo "Using latest tag: $LATEST_TAG"
+
+    - name: Determine build ref
+      id: get_ref
+      run: |
+        # Use custom ref if provided, otherwise use latest tag
+        if [ -n "${{ github.event.inputs.ref }}" ]; then
+          echo "Using custom ref: ${{ github.event.inputs.ref }}"
+          echo "ref=${{ github.event.inputs.ref }}" >> $GITHUB_OUTPUT
+        else
+          echo "Using latest tag as ref: ${{ steps.get_tag.outputs.latest_tag }}"
+          echo "ref=${{ steps.get_tag.outputs.latest_tag }}" >> $GITHUB_OUTPUT
+        fi
+  # Main build job
+  build:
+    permissions:
+      contents: write
+    needs: get-latest-tag
+    name: ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - {
+            name: "Ubuntu Latest GCC Release (Intel)",
+            os: ubuntu-22.04,
+            build_type: "Release", cc: "gcc", cxx: "g++",
+            build_gen: "Unix Makefiles",
+            cmake_extra_opts: "-Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES"
+          }
+        - {
+            name: "Ubuntu Latest GCC Debug (Intel)",
+            os: ubuntu-22.04,
+            build_type: "Debug", cc: "gcc", cxx: "g++",
+            build_gen: "Unix Makefiles",
+            cmake_extra_opts: "-Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES"
+          }
+        - {
+            name: "Ubuntu Latest Clang Release (Intel)",
+            os: ubuntu-22.04,
+            build_type: "Release", cc: "clang", cxx: "clang++",
+            build_gen: "Unix Makefiles",
+            cmake_extra_opts: "-Duse_libclang=YES -Dstatic_libclang=YES -Duse_libc++=NO"
+          }
+        - {
+            name: "Ubuntu Latest Clang Debug (Intel)",
+            os: ubuntu-22.04,
+            build_type: "Debug", cc: "clang", cxx: "clang++",
+            build_gen: "Unix Makefiles",
+            cmake_extra_opts: "-Duse_libclang=YES -Dstatic_libclang=YES -Duse_libc++=NO"
+          }
+
+        - {
+            name: "Ubuntu Latest GCC Release (Arm)",
+            os: ubuntu-24.04-arm,
+            build_type: "Release", cc: "gcc", cxx: "g++",
+            build_gen: "Unix Makefiles",
+            cmake_extra_opts: "-Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES"
+          }
+        - {
+            name: "Ubuntu Latest GCC Debug (Arm)",
+            os: ubuntu-24.04-arm,
+            build_type: "Debug", cc: "gcc", cxx: "g++",
+            build_gen: "Unix Makefiles",
+            cmake_extra_opts: "-Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES"
+          }
+        - {
+            name: "Ubuntu Latest Clang Release (Arm)",
+            os: ubuntu-24.04-arm,
+            build_type: "Release", cc: "clang", cxx: "clang++",
+            build_gen: "Unix Makefiles",
+            cmake_extra_opts: "-Duse_libclang=YES -Dstatic_libclang=YES -Duse_libc++=NO"
+          }
+        - {
+            name: "Ubuntu Latest Clang Debug (Arm)",
+            os: ubuntu-24.04-arm,
+            build_type: "Debug", cc: "clang", cxx: "clang++",
+            build_gen: "Unix Makefiles",
+            cmake_extra_opts: "-Duse_libclang=YES -Dstatic_libclang=YES -Duse_libc++=NO"
+          }
+        - {
+            name: "macOS Latest Release (Intel)",
+            os: macos-13,
+            build_type: "Release", cc: "clang", cxx: "clang++",
+            build_gen: "Unix Makefiles"
+          }
+        - {
+            name: "macOS Latest Debug (Intel)",
+            os: macos-13,
+            build_type: "Debug", cc: "clang", cxx: "clang++",
+            build_gen: "Unix Makefiles"
+          }
+        - {
+            name: "macOS Latest Release (Apple Silicon)",
+            os: macos-14,
+            build_type: "Release", cc: "clang", cxx: "clang++",
+            build_gen: "Unix Makefiles"
+          }
+        - {
+            name: "macOS Latest Debug (Apple Silicon)",
+            os: macos-14,
+            build_type: "Debug", cc: "clang", cxx: "clang++",
+            build_gen: "Unix Makefiles"
+          }
+        - {
+            name: "Windows Latest MSVC Debug",
+            os: windows-latest,
+            build_type: "Debug", cc: "cl", cxx: "cl",
+            build_gen: "NMake Makefiles"
+          }
+        - {
+            name: "Windows Latest MSVC Release",
+            os: windows-latest,
+            build_type: "Release", cc: "cl", cxx: "cl",
+            build_gen: "NMake Makefiles"
+          }
+    steps:
+    - name: Checkout doxygen
+      uses: actions/checkout@v4
+      with:
+        repository: doxygen/doxygen
+        ref: ${{ needs.get-latest-tag.outputs.release_ref }}
+        fetch-depth: 0
+
+    - name: Install libiconv (Windows)
+      uses: suisei-cn/actions-download-file@v1
+      with:
+        url: "https://github.com/pffang/libiconv-for-Windows/releases/download/v1.16/libiconv-for-Windows_1.16.7z"
+        target: .
+      if: matrix.config.os == 'windows-latest'
+
+    - name: Install LaTeX (Linux)
+      run: |
+        sudo apt update --fix-missing
+        sudo apt upgrade
+        sudo apt update
+        sudo apt-get install texlive texlive-latex-recommended texlive-extra-utils texlive-latex-extra texlive-font-utils
+      if: startsWith(matrix.config.os,'ubuntu-')
+
+    - name: Install LaTeX (MacOS)
+      run: |
+        brew update || true
+        brew install --cask mactex || true
+        echo "/Library/TeX/texbin/" >> $GITHUB_PATH
+      if: startsWith(matrix.config.os,'macos-')
+
+    - name: Install libclang (Ubuntu 22.04)
+      run: |
+        sudo apt update
+        sudo apt remove llvm-13 llvm-13-dev llvm-13-tools llvm-13-runtime clang-13 clang-format-13 libclang-common-13-dev libclang-cpp13 libclang1-13 libllvm13
+        sudo apt remove llvm-15 llvm-15-dev llvm-15-tools llvm-15-runtime clang-15 clang-format-15 libclang-common-15-dev libclang-cpp15 libclang1-15 libllvm15
+        sudo apt-get autoremove
+        sudo apt-get clean
+        sudo apt install libclang-common-14-dev libclang-14-dev
+        apt list --installed | egrep '(clang|llvm)'
+        ls -d /usr/lib/llvm-*/include/
+        sudo update-alternatives --install /usr/bin/clang   clang   /usr/bin/clang-14   100
+        sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-14 100
+        ls -al /usr/bin/clang++
+        ls -al /etc/alternatives/clang++
+        which clang++
+        clang++ -v
+      if: matrix.config.cc == 'clang' && matrix.config.os == 'ubuntu-22.04'
+
+    - name: Install libclang (Ubuntu 24.04 ARM)
+      run: |
+        sudo apt update
+        sudo apt remove llvm-14 llvm-14-dev llvm-14-tools llvm-14-runtime clang-14 clang-format-14 libclang-common-14-dev libclang-cpp14 libclang1-14 libllvm14
+        sudo apt remove llvm-15 llvm-15-dev llvm-15-tools llvm-15-runtime clang-15 clang-format-15 libclang-common-15-dev libclang-cpp15 libclang1-15 libllvm15
+        sudo apt remove llvm-16 llvm-16-dev llvm-16-tools llvm-16-runtime clang-16 clang-format-16 libclang-common-16-dev libclang-cpp16 libclang1-16 libllvm16
+        sudo apt-get autoremove
+        sudo apt-get clean
+        sudo apt install -y libclang-common-18-dev libclang-18-dev clang-18 llvm-18 llvm-18-dev
+        apt list --installed | egrep '(clang|llvm)'
+        ls -d /usr/lib/llvm-*/include/
+        sudo update-alternatives --install /usr/bin/clang   clang   /usr/bin/clang-18   100
+        sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-18 100
+        ls -al /usr/bin/clang++
+        ls -al /etc/alternatives/clang++
+        which clang++
+        clang++ -v
+      if: matrix.config.os == 'ubuntu-24.04-arm'
+
+    - name: Install libxapian (Ubuntu 22.04)
+      run: |
+        sudo apt update
+        sudo apt install libxapian-dev
+      if: matrix.config.os == 'ubuntu-22.04' || matrix.config.os == 'ubuntu-24.04-arm'
+
+    - name: Install LaTeX (Windows)
+      uses: teatimeguest/setup-texlive-action@v3
+      with:
+        packages: >-
+          scheme-medium
+          collection-latexextra
+          babel-dutch
+          cjk
+          bibtex
+      if: matrix.config.os == 'windows-latest'
+
+    - name: Install Ghostscript (Linux)
+      run: |
+        sudo apt update
+        sudo apt-get install ghostscript
+      if: startsWith(matrix.config.os,'ubuntu-')
+
+    - name: Install Ghostscript (Windows)
+      run:
+        choco install ghostscript
+      if: matrix.config.os == 'windows-latest'
+
+    - name: Setting Ghostscript paths (Windows)
+      shell: bash
+      run: |
+        export GSpath=`find /c/Prog*/gs -name gswin\*c.exe | sed -e "s/gswin.*c.exe//"`
+        export PATH="$GSpath:$PATH"
+        export GSpath=`echo "$GSpath" | sed -e "s%/c%C:%"`
+        echo "$GSpath" >> $GITHUB_PATH
+      if: matrix.config.os == 'windows-latest'
+
+    - name: Install xmllint (Linux)
+      run: |
+         sudo apt-get update
+         sudo apt-get install libxml2-utils
+      if: startsWith(matrix.config.os,'ubuntu-')
+
+    - name: Install xmllint (MacOS)
+      run: |
+         brew install --force --overwrite python@3.11 # temp hack
+         brew install --force --overwrite python@3.12 # temp hack
+         brew install --force --overwrite python@3.13 # temp hack
+         brew update
+         brew install libxml2
+      if: startsWith(matrix.config.os,'macos-')
+
+    - name: Install bison (MacOS)
+      run: |
+        brew update
+        brew install bison;
+        echo "$(brew --prefix bison)/bin" >> $GITHUB_PATH
+        #echo "/usr/local/opt/bison/bin" >> $GITHUB_PATH
+      if: startsWith(matrix.config.os,'macos-')
+
+    - name: Install bison/flex (Windows)
+      run: |
+        #Choco-Install -PackageName winflexbison
+        choco install winflexbison3
+      if: matrix.config.os == 'windows-latest'
+
+    - name: Install Graphviz (Linux)
+      run: |
+        sudo apt update
+        sudo apt-get install graphviz
+      if: startsWith(matrix.config.os,'ubuntu-')
+
+    - name: Install Graphviz (MacOS)
+      run: |
+        if ! brew install graphviz; then
+          # Workaround issue with unexpected symlinks: https://github.com/actions/runner-images/issues/6817
+          for f in 2to3 idle3 pydoc3 python3 python3-config; do
+            rm /usr/local/bin/$f || true
+          done
+          # Try again
+          brew install graphviz
+        fi
+      if: startsWith(matrix.config.os,'macos-')
+
+    - name: Install Graphviz (Windows)
+      run:
+        choco install graphviz.portable
+      if: matrix.config.os == 'windows-latest'
+
+    - name: Setup VS Environment (Windows)
+      uses: seanmiddleditch/gha-setup-vsdevenv@master
+      if: matrix.config.os == 'windows-latest'
+
+    - name: Refresh Env (Windows)
+      run: |
+        Import-Module $env:ChocolateyInstall\helpers\chocolateyProfile.psm1
+        refreshenv
+      if: matrix.config.os == 'windows-latest'
+
+    - name: Install Qt 6.8
+      uses: jdpurcell/install-qt-action@v5
+      with:
+        version: 6.8.*
+      if: matrix.config.os == 'ubuntu-24.04-arm'
+
+    - name: Install Qt 6.2
+      uses: jdpurcell/install-qt-action@v5
+      with:
+        version: 6.2.*
+      if: startsWith(matrix.config.os,'macos-')
+
+    - name: Install Qt 5
+      uses: jdpurcell/install-qt-action@v5
+      with:
+        version: 5.*
+      if: startsWith(matrix.config.os,'macos-')!=true && matrix.config.os != 'ubuntu-24.04-arm'
+
+    - name: Check tool versions (Linux / MacOS)
+      shell: bash
+      run: |
+        echo "=== perl ===";
+        perl --version;
+        echo "=== python ===";
+        python --version;
+        echo "=== cmake ===";
+        cmake --version;
+        echo "=== latex ===";
+        latex --version;
+        echo "=== bibtex ===";
+        bibtex --version
+        echo "=== dvips ===";
+        dvips --version
+        echo "=== bison ===";
+        bison --version;
+        echo "=== flex ===";
+        flex --version;
+        echo "=== dot ===";
+        dot -V;
+        echo "=== ghostscript ===";
+        gs --version;
+      if: matrix.config.os != 'windows-latest'
+
+    - name: Check tool versions (Windows)
+      shell: bash
+      run: |
+        echo "=== perl ===";
+        perl --version;
+        echo "=== python ===";
+        python --version;
+        echo "=== cmake ===";
+        cmake --version;
+        echo "=== latex ===";
+        latex --version;
+        echo "=== bibtex ===";
+        bibtex --version
+        echo "=== dvips ===";
+        dvips --version
+        echo "=== bison ===";
+        win_bison --version;
+        echo "=== flex ===";
+        win_flex --version;
+        echo "=== dot ===";
+        dot -V;
+        echo "=== ghostscript ===";
+        gswin64c --version;
+      if: matrix.config.os == 'windows-latest'
+    - name: Configure
+      shell: cmake -P {0}
+      run: |
+        set(ENV{CC} ${{ matrix.config.cc }})
+        set(ENV{CXX} ${{ matrix.config.cxx }})
+
+        execute_process(
+          COMMAND cmake
+            -S .
+            -B build
+            -D CMAKE_BUILD_TYPE=${{ matrix.config.build_type }}
+            -G "${{ matrix.config.build_gen }}"
+            -Dbuild_doc=YES
+            -Dbuild_wizard=YES
+            ${{ matrix.config.cmake_extra_opts }}
+          RESULT_VARIABLE result
+        )
+        if (NOT result EQUAL 0)
+          message(FATAL_ERROR "Bad exit status")
+        endif()
+    
+    - name: Build
+      shell: cmake -P {0}
+      run: |
+        include(ProcessorCount)
+        ProcessorCount(N)
+        execute_process(
+          COMMAND cmake --build build --parallel ${N}
+          RESULT_VARIABLE result
+          OUTPUT_VARIABLE output
+          ERROR_VARIABLE output
+          ECHO_OUTPUT_VARIABLE ECHO_ERROR_VARIABLE
+        )
+        if (NOT result EQUAL 0)
+          string(REGEX MATCH "FAILED:.*$" error_message "${output}")
+          string(REPLACE "\n" "%0A" error_message "${error_message}")
+          message("::error::${error_message}")
+          message(FATAL_ERROR "Build failed")
+        endif()
+
+    - name: Archive build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: "${{ matrix.config.name }} build artifacts"
+        path: build/bin/
+
+    - name: Run tests (Linux / MacOS)
+      shell: cmake -P {0}
+      run: |
+        set(ENV{CTEST_OUTPUT_ON_FAILURE} "ON")
+
+        execute_process(
+          COMMAND
+            cmake -E env TEST_FLAGS="--xml --xmlxsd --xhtml --qhp --docbook --rtf --man"
+            cmake --build build --target tests
+          RESULT_VARIABLE result
+        )
+        if (NOT result EQUAL 0)
+          message(FATAL_ERROR "Running tests failed!")
+        endif()
+      if: matrix.config.os != 'windows-latest'
+
+    - name: Run tests (Windows)
+      shell: cmake -P {0}
+      run: |
+        set(ENV{CTEST_OUTPUT_ON_FAILURE} "ON")
+
+        execute_process(
+          COMMAND
+            cmake -E env TEST_FLAGS="--xml --xmlxsd --xhtml --qhp --docbook --rtf --man --pdf"
+            cmake --build build --target tests
+          RESULT_VARIABLE result
+        )
+        if (NOT result EQUAL 0)
+          message(FATAL_ERROR "Running tests failed!")
+        endif()
+      if: matrix.config.os == 'windows-latest'
+
+    # Generate documentation
+    - name: Generate documentation
+      shell: cmake -P {0}
+      run: |
+        execute_process(
+          COMMAND cmake --build build --target docs
+          RESULT_VARIABLE result
+        )
+        if (NOT result EQUAL 0)
+          message(FATAL_ERROR "Building documentation failed")
+        endif()
+    
+    # Generate internal documentation only for main config
+    - name: Generate Internal documentation
+      shell: cmake -P {0}
+      run: |
+        execute_process(
+          COMMAND cmake --build build --target docs_internal
+          RESULT_VARIABLE result
+        )
+        if (NOT result EQUAL 0)
+          message(FATAL_ERROR "Building internal documentation failed")
+        endif()
+      if: matrix.config.name == 'Ubuntu Latest GCC Release (Intel)'
+
+    # Prepare artifacts
+    - name: Prepare artifacts
+      run: |
+        # Create output directory
+        mkdir -p artifacts
+        
+        # Get release tag from previous job
+        RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}"
+        
+        # Archive binaries
+        tar -czvf "artifacts/binaries-${{ matrix.config.name }}.tar.gz" -C build/bin .
+        
+        # For main config, package documentation
+        if [ "${{ matrix.config.name }}" = "Ubuntu Latest GCC Release (Intel)" ]; then
+          # Package HTML documentation
+          tar -czvf artifacts/html-docs.tar.gz -C build/html .
+          
+          # Package PDF manual
+          cp build/latex/doxygen_manual.pdf "artifacts/doxygen-manual-${RELEASE_TAG}.pdf"
+          
+          # Package internal documentation
+          tar -czvf artifacts/internal-docs.tar.gz -C build/doxygen_docs/html .
+        fi
+        
+        # Create build info file
+        echo "Doxygen Version: ${RELEASE_TAG}" > artifacts/build-info.txt
+        echo "Build: ${{ matrix.config.name }}" >> artifacts/build-info.txt
+        echo "OS: ${{ matrix.config.os }}" >> artifacts/build-info.txt
+        echo "Compiler: ${{ matrix.config.cc }}" >> artifacts/build-info.txt
+        echo "Build Type: ${{ matrix.config.build_type }}" >> artifacts/build-info.txt
+        echo "Commit: ${{ github.sha }}" >> artifacts/build-info.txt
+        echo "Build Date: $(date)" >> artifacts/build-info.txt
+      shell: bash
+
+    # Upload all artifacts
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: artifacts-${{ matrix.config.name }}
+        path: artifacts/*
+        retention-days: 1
+
+  # Release creation job
+  create-release:
+    needs: [get-latest-tag, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: all_artifacts
+        pattern: artifacts-*
+        merge-multiple: true
+
+    - name: Set release parameters
+      run: |
+        RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}"
+        echo "RELEASE_TAG=${RELEASE_TAG}" >> $GITHUB_ENV
+        echo "Using release tag: ${RELEASE_TAG}"
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ env.RELEASE_TAG }}
+        release_name: "Doxygen ${{ env.RELEASE_TAG }}"
+        body: |
+          Automatic build of Doxygen ${{ env.RELEASE_TAG }}
+          - Built from official source: [${{ needs.get-latest-tag.outputs.release_ref }}](https://github.com/doxygen/doxygen/tree/${{ needs.get-latest-tag.outputs.release_ref }})
+          - Build ID: ${{ github.run_id }}
+          - Build date: $(date -u)
+        draft: false
+        prerelease: false
+
+    # Upload each artifact separately to the release
+    - name: Upload release assets
+      run: |
+        RELEASE_TAG="${{ env.RELEASE_TAG }}"
+        
+        # Upload binary packages
+        for bin_pkg in all_artifacts/binaries-*.tar.gz; do
+          config_name=$(basename "$bin_pkg" .tar.gz | cut -d- -f2-)
+          asset_name="doxygen-binaries-${RELEASE_TAG}-${config_name// /_}.tar.gz"
+          
+          echo "Uploading: ${bin_pkg} as ${asset_name}"
+          gh release upload "$RELEASE_TAG" "$bin_pkg" \
+            --clobber \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$asset_name"
+        done
+        
+        # Upload documentation packages
+        if [ -f "all_artifacts/html-docs.tar.gz" ]; then
+          gh release upload "$RELEASE_TAG" "all_artifacts/html-docs.tar.gz" \
+            --clobber \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "doxygen-html-docs-${RELEASE_TAG}.tar.gz"
+        fi
+        
+        if [ -f "all_artifacts/internal-docs.tar.gz" ]; then
+          gh release upload "$RELEASE_TAG" "all_artifacts/internal-docs.tar.gz" \
+            --clobber \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "doxygen-internal-docs-${RELEASE_TAG}.tar.gz"
+        fi
+        
+        if [ -f "all_artifacts/doxygen-manual-${RELEASE_TAG}.pdf" ]; then
+          gh release upload "$RELEASE_TAG" "all_artifacts/doxygen-manual-${RELEASE_TAG}.pdf" \
+            --clobber \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "doxygen-manual-${RELEASE_TAG}.pdf"
+        fi
+        
+        # Upload build info
+        if [ -f "all_artifacts/build-info.txt" ]; then
+          gh release upload "$RELEASE_TAG" "all_artifacts/build-info.txt" \
+            --clobber \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "build-info-${RELEASE_TAG}.txt"
+        fi
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
