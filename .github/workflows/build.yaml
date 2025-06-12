@@ -287,7 +287,6 @@ jobs:
           mkdir -p "${PACKAGE_DIR}/bin"
           mkdir -p "${PACKAGE_DIR}/examples"
           mkdir -p "${PACKAGE_DIR}/html"
-          mkdir -p "${PACKAGE_DIR}/man"
 
           # Copy binaries to bin directory
           cp build/bin/doxygen* "${PACKAGE_DIR}/bin/"
@@ -305,13 +304,6 @@ jobs:
 
           # Copy documentation files
           cp -r build/html/* "${PACKAGE_DIR}/html/"
-
-          # Handle man pages
-          if [ -d "build/doc/man" ]; then
-            cp -r build/doc/man/* "${PACKAGE_DIR}/man/"
-          else
-            echo "Warning: build/doc/man directory not found, skipping man pages"
-          fi
 
           # Copy and rename PDF manual
           cp build/latex/doxygen_manual.pdf "${PACKAGE_DIR}/doxygen_manual-${VERSION}.pdf"
