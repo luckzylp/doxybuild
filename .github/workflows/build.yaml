@@ -79,8 +79,8 @@ jobs:
                 '-Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
                 -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
                 -DBUILD_SHARED_LIBS=OFF
-                -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
-                -DCMAKE_SHARED_LINKER_FLAGS="-static-libgcc -static-libstdc++"',
+                -DCMAKE_SHARED_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+                -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"',
             }
           - {
               name: "Ubuntu Latest Clang Release x86_64",
@@ -94,8 +94,8 @@ jobs:
                 -Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
                 -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
                 -DBUILD_SHARED_LIBS=OFF
-                -DCMAKE_EXE_LINKER_FLAGS="-static -static-libstdc++"
-                -DCMAKE_SHARED_LINKER_FLAGS="-static-libstdc++"',
+                -DCMAKE_SHARED_LINKER_FLAGS="-static-libstdc++"
+                -DCMAKE_EXE_LINKER_FLAGS="-static -static-libstdc++"',
             }
     steps:
       - name: Checkout doxygen
