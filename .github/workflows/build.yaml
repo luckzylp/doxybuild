@@ -308,10 +308,20 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout current repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
       - name: Install GitHub CLI
         run: sudo apt-get update && sudo apt-get install -y gh
 
-      - name: Login to GitHub
+      - name: Authenticate GitHub CLI
         run: gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Download artifacts
@@ -324,15 +334,23 @@ jobs:
       - name: Create Release
         run: |
           RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}"
-          gh release create $RELEASE_TAG \
-            --title "Doxygen $RELEASE_TAG" \
-            --notes "Automated build from official source"
 
-          # Upload all binary packages
-          for bin_pkg in all_artifacts/binaries-*.tar.gz; do
-            gh release upload $RELEASE_TAG "$bin_pkg"
+          # Make sure the label exists.
+          if ! git rev-parse $RELEASE_TAG >/dev/null 2>&1; then
+            echo "Tag $RELEASE_TAG doesn't exist, creating..."
+            git tag $RELEASE_TAG
+            git push origin $RELEASE_TAG
+          fi
+
+          # Create or update the release
+          if ! gh release view $RELEASE_TAG >/dev/null 2>&1; then
+            gh release create $RELEASE_TAG \
+              --title "Doxygen $RELEASE_TAG" \
+              --notes "Automated build from official source" \
+              --target $RELEASE_TAG
+          fi
+
+          # Upload all binary packages and document
+          find all_artifacts -type f | while read file; do
+            gh release upload $RELEASE_TAG "$file" --clobber
           done
-
-          # Upload the document
-          [ -f "all_artifacts/html-docs.tar.gz" ] && gh release upload $RELEASE_TAG "all_artifacts/html-docs.tar.gz"
-          [ -f "all_artifacts/doxygen-manual-*.pdf" ] && gh release upload $RELEASE_TAG "all_artifacts/doxygen-manual-*.pdf"
