@@ -293,16 +293,14 @@ jobs:
           cp build/bin/doxygen* "${PACKAGE_DIR}/bin/"
           cp build/bin/doxysearch.cgi "${PACKAGE_DIR}/bin/"
 
-          # Clone examples from GitHub
-          git clone --depth 1 --branch main https://github.com/doxygen/doxygen.git doxygen-src
-          cd doxygen-src
-          git checkout "$COMMIT_SHA"
-          cd ..
+          # Clone specific tag version for examples
+          git clone --depth 1 --branch "$RELEASE_TAG" https://github.com/doxygen/doxygen.git doxygen-src
           cp -r doxygen-src/examples/* "${PACKAGE_DIR}/examples/"
 
           # Copy documentation files
           cp -r build/html/* "${PACKAGE_DIR}/html/"
 
+          # Handle man pages
           if [ -d "build/doc/man" ]; then
             cp -r build/doc/man/* "${PACKAGE_DIR}/man/"
           else
@@ -318,7 +316,7 @@ jobs:
           cp doxygen-src/README "${PACKAGE_DIR}/"
           cp doxygen-src/VERSION "${PACKAGE_DIR}/"
 
-          # Create compressed package with specified naming convention
+          # Create compressed package
           TARBALL="doxygen-${VERSION}.${PLATFORM}-${COMPILER}.tar.gz"
           tar -czvf "${TARBALL}" "${PACKAGE_DIR}"
 
