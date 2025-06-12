@@ -45,6 +45,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            // Get commit SHA for specified ref using GitHub API
             const ref = '${{ steps.get_ref.outputs.ref }}';
             const response = await github.rest.repos.getCommit({
               owner: 'doxygen',
@@ -72,16 +73,12 @@ jobs:
               cc: "gcc",
               cxx: "g++",
               build_gen: "Unix Makefiles",
-              cmake_extra_opts: "-Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES",
-            }
-          - {
-              name: "Ubuntu Latest GCC Debug x86_64",
-              os: ubuntu-22.04,
-              build_type: "Debug",
-              cc: "gcc",
-              cxx: "g++",
-              build_gen: "Unix Makefiles",
-              cmake_extra_opts: "-Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES",
+              cmake_extra_opts:
+                '-Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
+                -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
+                -DBUILD_SHARED_LIBS=OFF
+                -DCMAKE_EXE_LINKER_FLAGS="-static-libgcc -static-libstdc++"
+                -DCMAKE_SHARED_LINKER_FLAGS="-static-libgcc -static-libstdc++"',
             }
           - {
               name: "Ubuntu Latest Clang Release x86_64",
@@ -90,16 +87,13 @@ jobs:
               cc: "clang",
               cxx: "clang++",
               build_gen: "Unix Makefiles",
-              cmake_extra_opts: "-Duse_libclang=YES -Dstatic_libclang=YES -Duse_libc++=NO",
-            }
-          - {
-              name: "Ubuntu Latest Clang Debug x86_64",
-              os: ubuntu-22.04,
-              build_type: "Debug",
-              cc: "clang",
-              cxx: "clang++",
-              build_gen: "Unix Makefiles",
-              cmake_extra_opts: "-Duse_libclang=YES -Dstatic_libclang=YES -Duse_libc++=NO",
+              cmake_extra_opts:
+                '-Duse_libclang=YES -Dstatic_libclang=YES -Duse_libc++=NO
+                -Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
+                -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
+                -DBUILD_SHARED_LIBS=OFF
+                -DCMAKE_EXE_LINKER_FLAGS="-static -static-libstdc++"
+                -DCMAKE_SHARED_LINKER_FLAGS="-static-libstdc++"',
             }
     steps:
       - name: Checkout doxygen
@@ -231,6 +225,7 @@ jobs:
             message(FATAL_ERROR "Build failed")
           endif()
 
+      # Test execution step
       - name: Run tests (Linux)
         shell: cmake -P {0}
         run: |
@@ -259,7 +254,7 @@ jobs:
             message(FATAL_ERROR "Building documentation failed")
           endif()
 
-      # Generate internal documentation only for main config
+      # Internal documentation generation (only for primary config)
       - name: Generate Internal documentation
         shell: cmake -P {0}
         run: |
@@ -272,32 +267,54 @@ jobs:
           endif()
         if: matrix.config.name == 'Ubuntu Latest GCC Release x86_64'
 
-      # Prepare artifacts for release
+      # Artifact preparation with new packaging structure
       - name: Prepare artifacts
         run: |
-          # Create output directory
-          mkdir -p artifacts
-
-          # Get release tag from previous job
+          # Format version number from release tag (Release_X_Y_Z → X.Y.Z)
           RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}"
+          VERSION=$(echo "${RELEASE_TAG}" | sed -e 's/Release_//' -e 's/_/./g')
+          PLATFORM="${{ matrix.config.os }}"
+          COMPILER="${{ matrix.config.cc }}"
 
-          # Archive binaries
-          tar -czvf "artifacts/binaries-${{ matrix.config.name }}.tar.gz" -C build/bin .
+          # Create package directory structure
+          PACKAGE_DIR="doxygen-${VERSION}"
+          mkdir -p "${PACKAGE_DIR}/bin"
+          mkdir -p "${PACKAGE_DIR}/examples"
+          mkdir -p "${PACKAGE_DIR}/html"
+          mkdir -p "${PACKAGE_DIR}/man"
 
-          # For main config, package documentation
-          if [ "${{ matrix.config.name }}" = "Ubuntu Latest GCC Release x86_64" ]; then
-            # Package HTML documentation
-            tar -czvf artifacts/html-docs.tar.gz -C build/html .
+          # Copy binaries to bin directory
+          cp build/bin/doxygen* "${PACKAGE_DIR}/bin/"
+          cp build/bin/doxysearch.cgi "${PACKAGE_DIR}/bin/"
 
-            # Package PDF manual
-            cp build/latex/doxygen_manual.pdf "artifacts/doxygen-manual-${RELEASE_TAG}.pdf"
+          # Clone examples from GitHub
+          git clone --depth 1 --branch "${{ needs.get-latest-tag.outputs.release_ref }}" \
+            https://github.com/doxygen/doxygen.git doxygen-src
+          cp -r doxygen-src/examples/* "${PACKAGE_DIR}/examples/"
 
-            # Package internal documentation
-            tar -czvf artifacts/internal-docs.tar.gz -C build/doxygen_docs/html .
-          fi
+          # Copy documentation files
+          cp -r build/html/* "${PACKAGE_DIR}/html/"
+          cp -r build/doc/man/* "${PACKAGE_DIR}/man/"
+
+          # Copy and rename PDF manual
+          cp build/latex/doxygen_manual.pdf "${PACKAGE_DIR}/doxygen_manual-${VERSION}.pdf"
+
+          # Copy core files from source
+          cp doxygen-src/INSTALL "${PACKAGE_DIR}/"
+          cp doxygen-src/LICENSE "${PACKAGE_DIR}/"
+          cp doxygen-src/README "${PACKAGE_DIR}/"
+          cp doxygen-src/VERSION "${PACKAGE_DIR}/"
+
+          # Create compressed package with specified naming convention
+          TARBALL="doxygen-${VERSION}.${PLATFORM}-${COMPILER}.tar.gz"
+          tar -czvf "${TARBALL}" "${PACKAGE_DIR}"
+
+          # Prepare artifacts directory
+          mkdir -p artifacts
+          mv "${TARBALL}" artifacts/
 
           # Create build info file
-          echo "Doxygen Version: ${RELEASE_TAG}" > artifacts/build-info.txt
+          echo "Doxygen Version: ${VERSION}" > artifacts/build-info.txt
           echo "Build: ${{ matrix.config.name }}" >> artifacts/build-info.txt
           echo "OS: ${{ matrix.config.os }}" >> artifacts/build-info.txt
           echo "Compiler: ${{ matrix.config.cc }}" >> artifacts/build-info.txt
@@ -306,7 +323,7 @@ jobs:
           echo "Build Date: $(date)" >> artifacts/build-info.txt
         shell: bash
 
-      # Upload all artifacts
+      # Upload generated artifacts
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -367,7 +384,6 @@ jobs:
 
           # Create release targeting specific commit SHA
           if ! gh release view $RELEASE_TAG >/dev/null 2>&1; then
-            # Correct syntax: --target <commit>
             gh release create "$RELEASE_TAG" \
               --title "Doxygen $RELEASE_TAG" \
               --notes "Automated build from official source" \
