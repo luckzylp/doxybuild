@@ -1,4 +1,4 @@
-name: Doxygen Build and Release
+name: Doxygen Build and Release with static clang
 
 on:
   workflow_dispatch:
@@ -76,7 +76,8 @@ jobs:
               cxx: "g++",
               build_gen: "Unix Makefiles",
               cmake_extra_opts:
-                '-Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
+                '-Duse_libclang=YES -Dstatic_libclang=YES
+                -Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
                 -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
                 -DBUILD_SHARED_LIBS=OFF',
             }
@@ -109,23 +110,65 @@ jobs:
           sudo apt-get install texlive texlive-latex-recommended texlive-extra-utils texlive-latex-extra texlive-font-utils
         if: startsWith(matrix.config.os,'ubuntu-')
 
-      - name: Install libclang (Ubuntu 22.04)
+      - name: Uninstall existing LLVM/Clang
+        run: |
+          sudo apt remove --purge -y '^llvm-.*' '^clang-.*' '^libclang-.*' '^libllvm.*' || true
+          sudo apt autoremove -y
+          sudo apt clean
+        if: matrix.config.os == 'ubuntu-22.04'
+
+      - name: Install LLVM-14 (Clang target only)
         run: |
           sudo apt update
-          sudo apt remove llvm-13 llvm-13-dev llvm-13-tools llvm-13-runtime clang-13 clang-format-13 libclang-common-13-dev libclang-cpp13 libclang1-13 libllvm13
-          sudo apt remove llvm-15 llvm-15-dev llvm-15-tools llvm-15-runtime clang-15 clang-format-15 libclang-common-15-dev libclang-cpp15 libclang1-15 libllvm15
-          sudo apt-get autoremove
-          sudo apt-get clean
-          sudo apt install libclang-common-14-dev libclang-14-dev
-          apt list --installed | egrep '(clang|llvm)'
-          ls -d /usr/lib/llvm-*/include/
-          sudo update-alternatives --install /usr/bin/clang   clang   /usr/bin/clang-14   100
+          sudo apt install -y clang-14 libclang-14-dev
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-14 100
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-14 100
-          ls -al /usr/bin/clang++
-          ls -al /etc/alternatives/clang++
-          which clang++
           clang++ -v
         if: matrix.config.cc == 'clang' && matrix.config.os == 'ubuntu-22.04'
+
+      - name: Build and install LLVM with static libraries
+        run: |
+          # Install build dependencies
+          sudo apt install -y cmake ninja-build build-essential
+
+          # Get latest stable LLVM tag
+          LATEST_TAG=$(git ls-remote --tags --refs --sort=-v:refname https://github.com/llvm/llvm-project.git | \
+                       grep -Eo 'refs/tags/llvmorg-[0-9.]+$' | sort -V | tail -n1 | sed 's/refs\/tags\///')
+          echo "Building LLVM tag: $LATEST_TAG"
+
+          # Clone LLVM project
+          git clone --depth 1 --branch "$LATEST_TAG" https://github.com/llvm/llvm-project.git
+
+          # Configure compiler
+          if [ "${{ matrix.config.cc }}" = "gcc" ]; then
+            export CC=gcc
+            export CXX=g++
+          elif [ "${{ matrix.config.cc }}" = "clang" ]; then
+            export CC=clang
+            export CXX=clang++
+          fi
+
+          # Build configuration
+          mkdir llvm-build
+          cd llvm-build
+          cmake -G Ninja -S ../llvm-project/llvm -B . \
+            -DLLVM_ENABLE_PROJECTS="clang" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=$HOME/llvm-install \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DLLVM_ENABLE_RTTI=ON \
+            -DLLVM_INCLUDE_TESTS=OFF \
+            -DLLVM_INCLUDE_EXAMPLES=OFF \
+            -DLLVM_INCLUDE_BENCHMARKS=OFF
+
+          # Build and install
+          cmake --build . --parallel $(nproc) --target install
+          cd ..
+
+          # Verify installation
+          ls -R $HOME/llvm-install
+        shell: bash
+        if: matrix.config.os == 'ubuntu-22.04'
 
       - name: Install libxapian (Ubuntu 22.04)
         run: |
@@ -191,6 +234,9 @@ jobs:
           # Set static linking flags
           set(LINKER_FLAGS "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++ -DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++")
 
+          # Set path to built LLVM
+          set(LLVM_PATH "-DCMAKE_PREFIX_PATH=$ENV{HOME}/llvm-install")
+
           execute_process(
             COMMAND cmake
               -S .
@@ -200,6 +246,7 @@ jobs:
               -Dbuild_doc=YES
               -Dbuild_wizard=YES
               ${{ matrix.config.cmake_extra_opts }}
+              ${LLVM_PATH}
               ${LINKER_FLAGS}
               RESULT_VARIABLE result
           )
