@@ -76,8 +76,7 @@ jobs:
               cxx: "g++",
               build_gen: "Unix Makefiles",
               cmake_extra_opts:
-                '-Duse_libclang=YES -Dstatic_libclang=YES
-                -Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
+                '-Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
                 -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
                 -DBUILD_SHARED_LIBS=OFF',
             }
