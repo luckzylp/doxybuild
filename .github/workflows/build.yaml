@@ -191,7 +191,7 @@ jobs:
           if ("${{ matrix.config.cc }}" STREQUAL "gcc")
             set(LINKER_FLAGS "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++ -DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++")
           else()
-            set(LINKER_FLAGS "")
+            set(LINKER_FLAGS "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++ -DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++")
           endif()
 
           execute_process(
@@ -284,34 +284,16 @@ jobs:
 
           # Create package directory structure
           PACKAGE_DIR="doxygen-${VERSION}"
-          mkdir -p "${PACKAGE_DIR}/bin"
-          mkdir -p "${PACKAGE_DIR}/examples"
-          mkdir -p "${PACKAGE_DIR}/html"
 
-          # Copy binaries to bin directory
+          # Download and extract official Linux binaries
+          wget $(curl -s https://api.github.com/repos/doxygen/doxygen/releases/latest | grep -Eo 'https://.*linux\.bin\.tar\.gz' | head -1) -o doxygen-latest-linux-bin.tar.gz
+          mkdir -p official_bin
+          tar -xzf doxygen-latest-linux-bin.tar.gz -C official_bin --strip-components=1
+
+          # Create bin directory and copy official binaries
+          cp -r official_bin/* "${PACKAGE_DIR}/"
+          rm "${PACKAGE_DIR}/bin/*"
           cp build/bin/doxy* "${PACKAGE_DIR}/bin/"
-          # cp build/bin/doxysearch.cgi "${PACKAGE_DIR}/bin/"
-
-          # Clone specific tag version for examples
-          echo "Cloning doxygen repository..."
-          git clone https://github.com/doxygen/doxygen.git doxygen-src
-          # Checkout specific release tag
-          echo "Checking out tag: $RELEASE_TAG"
-          cd doxygen-src
-          git checkout "$RELEASE_TAG"
-          cd ..
-          cp -r doxygen-src/examples/* "${PACKAGE_DIR}/examples/"
-
-          # Copy documentation files
-          cp -r build/html/* "${PACKAGE_DIR}/html/"
-
-          # Copy and rename PDF manual
-          cp build/latex/doxygen_manual.pdf "${PACKAGE_DIR}/doxygen_manual-${VERSION}.pdf"
-
-          # Copy core files from source
-          cp doxygen-src/INSTALL "${PACKAGE_DIR}/"
-          cp doxygen-src/LICENSE "${PACKAGE_DIR}/"
-          cp doxygen-src/VERSION "${PACKAGE_DIR}/"
 
           # Create compressed package
           TARBALL="doxygen-${VERSION}.${PLATFORM}-${COMPILER}.tar.gz"
@@ -362,11 +344,11 @@ jobs:
           # Fetch the specific commit from doxygen repo
           git fetch https://github.com/doxygen/doxygen.git ${{ needs.get-latest-tag.outputs.commit_sha }} --depth=1
 
-      - name: Install GitHub CLI
-        run: sudo apt-get update && sudo apt-get install -y gh
+      # - name: Install GitHub CLI
+      #   run: sudo apt-get update && sudo apt-get install -y gh
 
-      - name: Authenticate GitHub CLI
-        run: gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
+      # - name: Authenticate GitHub CLI
+      #   run: gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -375,7 +357,7 @@ jobs:
           pattern: artifacts-*
           merge-multiple: true
 
-      - name: Create Release
+      - name: Create tag and push
         run: |
           RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}"
           COMMIT_SHA="${{ needs.get-latest-tag.outputs.commit_sha }}"
@@ -390,15 +372,22 @@ jobs:
             git push origin $RELEASE_TAG
           fi
 
-          # Create release targeting specific commit SHA
-          if ! gh release view $RELEASE_TAG >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" \
-              --title "Doxygen $RELEASE_TAG" \
-              --notes "Automated build from official source" \
-              --target "$COMMIT_SHA"
-          fi
+        # Create release targeting specific commit SHA
+        # if ! gh release view $RELEASE_TAG >/dev/null 2>&1; then
+        #   gh release create "$RELEASE_TAG" \
+        #     --title "Doxygen $RELEASE_TAG" \
+        #     --notes "Automated build from official source" \
+        #     --target "$COMMIT_SHA"
+        # fi
 
-          # Upload all artifacts to release
-          find all_artifacts -type f | while read file; do
-            gh release upload "$RELEASE_TAG" "$file" --clobber
-          done
+        # # Upload all artifacts to release
+        # find all_artifacts -type f | while read file; do
+        #   gh release upload "$RELEASE_TAG" "$file" --clobber
+        # done
+
+      - name: Upload artifacts to GitHub Packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: all_artifacts/*
+          retention-days: 1
