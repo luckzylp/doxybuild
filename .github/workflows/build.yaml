@@ -286,9 +286,10 @@ jobs:
           PACKAGE_DIR="doxygen-${VERSION}"
 
           # Download and extract official Linux binaries
-          wget $(curl -s https://api.github.com/repos/doxygen/doxygen/releases/latest | grep -Eo 'https://.*linux\.bin\.tar\.gz' | head -1) -o doxygen-latest-linux-bin.tar.gz
+          OFFICIAL_URL=$(curl -s "https://api.github.com/repos/doxygen/doxygen/releases/tags/${RELEASE_TAG}" | grep -Eo 'https://[^"]*linux\.bin\.tar\.gz' | head -1)
+          wget "${OFFICIAL_URL}" -O doxygen-linux-bin.tar.gz
           mkdir -p official_bin
-          tar -xzf doxygen-latest-linux-bin.tar.gz -C official_bin --strip-components=1
+          tar -xzf doxygen-linux-bin.tar.gz -C official_bin --strip-components=1
 
           # Create bin directory and copy official binaries
           cp -r official_bin/* "${PACKAGE_DIR}/"
