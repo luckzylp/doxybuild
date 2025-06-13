@@ -76,7 +76,8 @@ jobs:
               cxx: "g++",
               build_gen: "Unix Makefiles",
               cmake_extra_opts:
-                '-Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
+                '-Duse_libclang=YES -Dstatic_libclang=YES
+                -Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
                 -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
                 -DBUILD_SHARED_LIBS=OFF',
             }
@@ -284,6 +285,7 @@ jobs:
 
           # Create package directory structure
           PACKAGE_DIR="doxygen-${VERSION}"
+          mkdir -p "${PACKAGE_DIR}"
 
           # Download and extract official Linux binaries
           OFFICIAL_URL=$(curl -s "https://api.github.com/repos/doxygen/doxygen/releases/tags/${RELEASE_TAG}" | grep -Eo 'https://[^"]*linux\.bin\.tar\.gz' | head -1)
@@ -293,7 +295,8 @@ jobs:
 
           # Create bin directory and copy official binaries
           cp -r official_bin/* "${PACKAGE_DIR}/"
-          rm "${PACKAGE_DIR}/bin/*"
+          rm -rf "${PACKAGE_DIR}/bin"
+          mkdir -p "${PACKAGE_DIR}/bin"
           cp build/bin/doxy* "${PACKAGE_DIR}/bin/"
 
           # Create compressed package
