@@ -154,10 +154,9 @@ jobs:
       - name: Download and extract static LLVM
         run: |
           COMPILER="${{ matrix.config.cc }}"
-
           # Fetch latest release gcc/clang static lib from clangbuild repository
           RELEASE_TAG=$(curl -s "https://api.github.com/repos/luckzylp/clangbuild/releases/latest" | jq -r '.tag_name')  
-          OFFICIAL_URL=$(curl -s "https://api.github.com/repos/luckzylp/clangbuild/releases/tags/${RELEASE_TAG}" | grep -Eo 'https://[^"]*linux-${COMPILER}\.tar\.gz' | head -1)
+          OFFICIAL_URL=$(curl -s "https://api.github.com/repos/luckzylp/clangbuild/releases/tags/${RELEASE_TAG}" | grep -Eo "https://[^\"]*linux-${COMPILER}\.tar\.gz" | head -1)
           wget "${OFFICIAL_URL}" -O llvm-static.tar.gz
           mkdir -p "$HOME/llvm-install"
           tar -xzf llvm-static.tar.gz -C "$HOME/llvm-install" --strip-components=1
