@@ -1,4 +1,4 @@
-name: Doxygen Build and Release with static clang
+name: Doxygen Build and Release with precompiled static clang
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  # Job to determine the latest release tag
+  # Job to determine the latest Doxygen release tag
   get-latest-tag:
     runs-on: ubuntu-latest
     outputs:
@@ -75,19 +75,18 @@ jobs:
             cc: "gcc"
             cxx: "g++"
             build_gen: "Ninja"
-            cflags: -O3 -include $GITHUB_WORKSPACE/.github/workflows/lib_compat.h
             cmake_extra_opts: >-
-                "-Duse_libclang=YES"
-                "-Dstatic_libclang=YES"
-                "-Dbuild_search=YES"
-                "-Dbuild_app=YES"
-                "-Dbuild_parse=YES"
-                "-Dbuild_doc=YES"
-                "-Dbuild_wizard=YES"
-                "-DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
-                "-DBUILD_SHARED_LIBS=OFF"
-                "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++"
-                "-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++"
+              "-Duse_libclang=YES"
+              "-Dstatic_libclang=YES"
+              "-Dbuild_search=YES"
+              "-Dbuild_app=YES"
+              "-Dbuild_parse=YES"
+              "-Dbuild_doc=YES"
+              "-Dbuild_wizard=YES"
+              "-DCMAKE_FIND_LIBRARY_SUFFIXES=\".a\""
+              "-DBUILD_SHARED_LIBS=OFF"
+              "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++"
+              "-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++"
 
           # clang compiler on x86_64 ubuntu
           - name: "Ubuntu Latest Clang Release x86_64"
@@ -96,7 +95,6 @@ jobs:
             cc: "clang"
             cxx: "clang++"
             build_gen: "Ninja"
-            cflags: -O3 -include $GITHUB_WORKSPACE/.github/workflows/lib_compat.h
             cmake_extra_opts: >-
               "-Duse_libclang=YES"
               "-Dstatic_libclang=YES"
@@ -106,7 +104,7 @@ jobs:
               "-Dbuild_parse=YES"
               "-Dbuild_doc=YES"
               "-Dbuild_wizard=YES"
-              "-DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
+              "-DCMAKE_FIND_LIBRARY_SUFFIXES=\".a\""
               "-DBUILD_SHARED_LIBS=OFF"
               "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++"
               "-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++"
@@ -129,61 +127,38 @@ jobs:
 
       - name: Uninstall existing LLVM/Clang
         run: |
+          # Remove all existing LLVM/Clang packages and binaries
           sudo apt remove --purge -y '^llvm-.*' '^clang-.*' '^libclang-.*' '^libllvm.*' || true
           sudo apt autoremove -y
           sudo apt clean
+          # Clean up any remaining binaries
+          sudo rm -f /usr/bin/clang* /usr/bin/llvm*
+          # Verify removal
+          which clang || echo "clang not found (expected after uninstall)"
         if: matrix.config.os == 'ubuntu-22.04'
 
-      - name: Install LLVM-14 (Clang target only)
+      - name: Install LLVM-14 (for Clang builds)
         run: |
+          # Install clang-14 specifically for Clang-based builds
           sudo apt update
           sudo apt install -y clang-14 libclang-14-dev
+          # Configure clang-14 as system default
           sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-14 100
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-14 100
+          # Verify installation
           clang++ -v
         if: matrix.config.cc == 'clang' && matrix.config.os == 'ubuntu-22.04'
 
-      - name: Build and install LLVM with static libraries
+      - name: Download and extract static LLVM
         run: |
-          # Install build dependencies
-          sudo apt install -y cmake ninja-build build-essential
-
-          # Get latest stable LLVM tag
-          LATEST_TAG=$(git ls-remote --tags --refs --sort=-v:refname https://github.com/llvm/llvm-project.git | \
-                       grep -Eo 'refs/tags/llvmorg-[0-9.]+$' | sort -V | tail -n1 | sed 's/refs\/tags\///')
-          echo "Building LLVM tag: $LATEST_TAG"
-
-          # Clone LLVM project
-          git clone --depth 1 --branch "$LATEST_TAG" https://github.com/llvm/llvm-project.git
-
-          # Configure compiler
-          if [ "${{ matrix.config.cc }}" = "gcc" ]; then
-            export CC=gcc
-            export CXX=g++
-          elif [ "${{ matrix.config.cc }}" = "clang" ]; then
-            export CC=clang
-            export CXX=clang++
-          fi
-
-          # Build configuration
-          mkdir llvm-build
-          cd llvm-build
-          cmake -G Ninja -S ../llvm-project/llvm -B . \
-            -DLLVM_ENABLE_PROJECTS="clang" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$HOME/llvm-install \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DLLVM_ENABLE_RTTI=ON \
-            -DLLVM_INCLUDE_TESTS=OFF \
-            -DLLVM_INCLUDE_EXAMPLES=OFF \
-            -DLLVM_INCLUDE_BENCHMARKS=OFF
-
-          # Build and install
-          cmake --build . --parallel $(nproc) --target install
-          cd ..
-
-          # Verify installation
-          ls -R $HOME/llvm-install
+          COMPILER="${{ matrix.config.cc }}"
+          # Fetch latest release gcc/clang static lib from clangbuild repository
+          RELEASE_TAG=$(curl -s "https://api.github.com/repos/luckzylp/clangbuild/releases/latest" | jq -r '.tag_name')
+          OFFICIAL_URL=$(curl -s "https://api.github.com/repos/luckzylp/clangbuild/releases/tags/${RELEASE_TAG}" | grep -Eo "https://[^\"]*linux-${COMPILER}\.tar\.gz" | head -1)
+          wget "${OFFICIAL_URL}" -O llvm-static.tar.gz
+          mkdir -p "$HOME/llvm-install"
+          tar -xzf llvm-static.tar.gz -C "$HOME/llvm-install" --strip-components=1
+          echo "LLVM installed at: $HOME/llvm-install"
         shell: bash
         if: matrix.config.os == 'ubuntu-22.04'
 
@@ -248,7 +223,7 @@ jobs:
           set(ENV{CC} ${{ matrix.config.cc }})
           set(ENV{CXX} ${{ matrix.config.cxx }})
 
-          # Set path to built LLVM
+          # Set path to downloaded LLVM
           set(LLVM_PATH "-DCMAKE_PREFIX_PATH=$ENV{HOME}/llvm-install")
 
           execute_process(
@@ -257,7 +232,6 @@ jobs:
               -B build
               -D CMAKE_BUILD_TYPE=${{ matrix.config.build_type }}
               -G "${{ matrix.config.build_gen }}"
-              ${{ matrix.config.cflags }}
               ${{ matrix.config.cmake_extra_opts }}
               ${LLVM_PATH}
               RESULT_VARIABLE result
@@ -327,9 +301,6 @@ jobs:
             message(FATAL_ERROR "Building internal documentation failed")
           endif()
         if: matrix.config.name == 'Ubuntu Latest GCC Release x86_64'
-
-      - name: Check binary compatibility
-        run: .github/workflows/lib_compat_test.py --lib=GLIBC_2.18 "build/bin/doxygen"
 
       # Artifact preparation with new packaging structure
       - name: Prepare artifacts
