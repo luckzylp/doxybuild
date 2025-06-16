@@ -90,8 +90,8 @@ jobs:
               "-Dbuild_doc=YES"
               "-DCMAKE_FIND_LIBRARY_SUFFIXES=\".a\""
               "-DBUILD_SHARED_LIBS=OFF"
-              "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++"
-              "-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++"
+              "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++ -lrt -Wl,--allow-multiple-definition"
+              "-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++ -lrt -Wl,--allow-multiple-definition"
 
           # Clang build configuration for Ubuntu 20.04 using clang-9
           - name: "Ubuntu 20.04 Clang Release x86_64"
@@ -111,8 +111,8 @@ jobs:
               "-Dbuild_doc=YES"
               "-DCMAKE_FIND_LIBRARY_SUFFIXES=\".a\""
               "-DBUILD_SHARED_LIBS=OFF"
-              "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++"
-              "-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++"
+              "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++ -lrt -Wl,--allow-multiple-definition"
+              "-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++ -lrt -Wl,--allow-multiple-definition"
 
     steps:
       - name: Install core build dependencies
@@ -368,10 +368,6 @@ jobs:
             message("::error::${error_message}")
             message(FATAL_ERROR "Build failed")
           endif()
-
-        env:
-          LDFLAGS: "-lrt -Wl,--allow-multiple-definition"
-          CXXFLAGS: "-DHAVE_TIMER_CREATE"
 
       # Test execution step
       - name: Run tests (Linux)
