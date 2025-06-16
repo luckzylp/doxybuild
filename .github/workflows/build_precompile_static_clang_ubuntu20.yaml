@@ -154,10 +154,14 @@ jobs:
             cmake \
             python3.8 \
             python3.8-dev \
+            python-is-python3 \
             build-essential \
             binutils \
             gcc-9 \
             g++-9
+
+          ln -sf /usr/bin/python3.8 /usr/bin/python
+          python --version
 
       - name: Checkout doxygen
         uses: actions/checkout@v4
