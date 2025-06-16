@@ -1,4 +1,4 @@
-name: Doxygen Build and Release with ubuntu package
+name: Doxygen Build and Release
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  # Job to determine the latest release tag
+  # Job to fetch the latest Doxygen release tag
   get-latest-tag:
     runs-on: ubuntu-latest
     outputs:
@@ -23,6 +23,7 @@ jobs:
       - name: Get latest release tag
         id: get_tag
         run: |
+          # Fetch the latest release tag from Doxygen GitHub repository
           LATEST_TAG=$(curl -s "https://api.github.com/repos/doxygen/doxygen/releases/latest" | jq -r '.tag_name')
           echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
           echo "Using latest tag: $LATEST_TAG"
@@ -30,6 +31,7 @@ jobs:
       - name: Determine build ref
         id: get_ref
         run: |
+          # Use custom ref if provided, otherwise use latest tag
           if [ -n "${{ github.event.inputs.ref }}" ]; then
             echo "Using custom ref: ${{ github.event.inputs.ref }}"
             echo "ref=${{ github.event.inputs.ref }}" >> $GITHUB_OUTPUT
@@ -68,32 +70,56 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - {
-              name: "Ubuntu Latest GCC Release x86_64",
-              os: ubuntu-22.04,
-              build_type: "Release",
-              cc: "gcc",
-              cxx: "g++",
-              build_gen: "Unix Makefiles",
-              cmake_extra_opts:
-                '-Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
-                -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
-                -DBUILD_SHARED_LIBS=OFF',
-            }
-          - {
-              name: "Ubuntu Latest Clang Release x86_64",
-              os: ubuntu-22.04,
-              build_type: "Release",
-              cc: "clang",
-              cxx: "clang++",
-              build_gen: "Unix Makefiles",
-              cmake_extra_opts:
-                '-Duse_libclang=YES -Dstatic_libclang=YES -Duse_libc++=NO
-                -Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
-                -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
-                -DBUILD_SHARED_LIBS=OFF',
-            }
+          # gcc compiler on x86_64 ubuntu
+          - name: "Ubuntu Latest GCC Release x86_64"
+            os: ubuntu-22.04
+            platform: amd64
+            build_type: "Release"
+            cc: "gcc"
+            cxx: "g++"
+            build_gen: "Ninja"
+            cmake_extra_opts: >-
+              "-Duse_libclang=YES"
+              "-Dstatic_libclang=YES"
+              "-Dbuild_search=YES"
+              "-Dbuild_app=YES"
+              "-Dbuild_parse=YES"
+              "-Dbuild_doc=YES"
+              "-Dbuild_wizard=YES"
+              "-DCMAKE_FIND_LIBRARY_SUFFIXES=\".a\""
+              "-DBUILD_SHARED_LIBS=OFF"
+              "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++"
+              "-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++"
+
+          # clang compiler on x86_64 ubuntu
+          - name: "Ubuntu Latest Clang Release x86_64"
+            os: ubuntu-22.04
+            platform: amd64
+            build_type: "Release"
+            cc: "clang"
+            cxx: "clang++"
+            build_gen: "Ninja"
+            cmake_extra_opts: >-
+              "-Duse_libclang=YES"
+              "-Dstatic_libclang=YES"
+              "-Duse_libc++=NO"
+              "-Dbuild_search=YES"
+              "-Dbuild_app=YES"
+              "-Dbuild_parse=YES"
+              "-Dbuild_doc=YES"
+              "-Dbuild_wizard=YES"
+              "-DCMAKE_FIND_LIBRARY_SUFFIXES=\".a\""
+              "-DBUILD_SHARED_LIBS=OFF"
+              "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++"
+              "-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++"
+
     steps:
+      - name: Install core build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install jq curl ninja-build build-essential wget file bison flex
+        if: startsWith(matrix.config.os,'ubuntu-')
+
       - name: Checkout doxygen
         uses: actions/checkout@v4
         with:
@@ -109,23 +135,73 @@ jobs:
           sudo apt-get install texlive texlive-latex-recommended texlive-extra-utils texlive-latex-extra texlive-font-utils
         if: startsWith(matrix.config.os,'ubuntu-')
 
-      - name: Install libclang (Ubuntu 22.04)
+      - name: Uninstall existing LLVM/Clang
         run: |
+          # Remove all existing LLVM/Clang packages and binaries
+          sudo apt remove --purge -y '^llvm-.*' '^clang-.*' '^libclang-.*' '^libllvm.*' || true
+          sudo apt autoremove -y
+          sudo apt clean
+          # Clean up any remaining binaries
+          sudo rm -f /usr/bin/clang* /usr/bin/llvm*
+          # Verify removal
+          which clang || echo "clang not found (expected after uninstall)"
+        if: matrix.config.os == 'ubuntu-22.04'
+
+      - name: Install LLVM-14 (for Clang builds)
+        run: |
+          # Install clang-14 specifically for Clang-based builds
           sudo apt update
-          sudo apt remove llvm-13 llvm-13-dev llvm-13-tools llvm-13-runtime clang-13 clang-format-13 libclang-common-13-dev libclang-cpp13 libclang1-13 libllvm13
-          sudo apt remove llvm-15 llvm-15-dev llvm-15-tools llvm-15-runtime clang-15 clang-format-15 libclang-common-15-dev libclang-cpp15 libclang1-15 libllvm15
-          sudo apt-get autoremove
-          sudo apt-get clean
-          sudo apt install libclang-common-14-dev libclang-14-dev
-          apt list --installed | egrep '(clang|llvm)'
-          ls -d /usr/lib/llvm-*/include/
-          sudo update-alternatives --install /usr/bin/clang   clang   /usr/bin/clang-14   100
+          sudo apt install -y clang-14 libclang-14-dev
+          # Configure clang-14 as system default
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-14 100
           sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-14 100
-          ls -al /usr/bin/clang++
-          ls -al /etc/alternatives/clang++
-          which clang++
+          # Verify installation
           clang++ -v
         if: matrix.config.cc == 'clang' && matrix.config.os == 'ubuntu-22.04'
+
+      - name: Download and extract static LLVM
+        run: |
+          COMPILER="${{ matrix.config.cc }}"
+
+          # Fetch static clang library built for Ubuntu 22.04
+          # Get all releases (including pre-releases) and filter by ubuntu-22.04 tag
+          releases=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/luckzylp/clangbuild/releases?per_page=100")
+
+          # Find latest release matching criteria
+          release_tag=$(echo "$releases" | jq -r \
+            'map(select(.tag_name | contains("ubuntu22.04")))
+            | sort_by(.published_at) | reverse | .[0].tag_name')
+
+          if [ -z "$release_tag" ] || [ "$release_tag" = "null" ]; then
+            echo "::error::No ubuntu22.04 release found"
+            exit 1
+          fi
+
+          # Use release_tag variable directly instead of step output (fixes invalid reference)
+          assets=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/luckzylp/clangbuild/releases/tags/${release_tag}")
+
+          echo "assets: $assets"
+
+          # Find asset URL using regex pattern
+          asset_url=$(echo "$assets" | grep -Eo "https://[^\"]*linux-${COMPILER}\.tar\.gz")
+
+          echo "asset_url: $asset_url"
+
+          if [ -z "$asset_url" ]; then
+            echo "::error::No matching asset found for COMPILER=${COMPILER}"
+            exit 1
+          fi
+
+          curl -L -o "llvm-static.tar.gz" "$asset_url"
+          echo "Downloaded: $(ls -lh llvm-static.tar.gz)"
+
+          mkdir -p "$HOME/llvm-install"
+          tar -xzf llvm-static.tar.gz -C "$HOME/llvm-install" --strip-components=1
+          echo "LLVM installed at: $HOME/llvm-install"
+        shell: bash
+        if: matrix.config.os == 'ubuntu-22.04'
 
       - name: Install libxapian (Ubuntu 22.04)
         run: |
@@ -188,8 +264,8 @@ jobs:
           set(ENV{CC} ${{ matrix.config.cc }})
           set(ENV{CXX} ${{ matrix.config.cxx }})
 
-          # Set static linking flags
-          set(LINKER_FLAGS "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++ -DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++")
+          # Set path to downloaded LLVM
+          set(LLVM_PATH "-DCMAKE_PREFIX_PATH=$ENV{HOME}/llvm-install")
 
           execute_process(
             COMMAND cmake
@@ -197,10 +273,8 @@ jobs:
               -B build
               -D CMAKE_BUILD_TYPE=${{ matrix.config.build_type }}
               -G "${{ matrix.config.build_gen }}"
-              -Dbuild_doc=YES
-              -Dbuild_wizard=YES
               ${{ matrix.config.cmake_extra_opts }}
-              ${LINKER_FLAGS}
+              ${LLVM_PATH}
               RESULT_VARIABLE result
           )
           if (NOT result EQUAL 0)
@@ -275,7 +349,8 @@ jobs:
           # Format version number from release tag
           RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}"
           VERSION=$(echo "${RELEASE_TAG}" | sed -e 's/Release_//' -e 's/_/./g')
-          PLATFORM="${{ matrix.config.os }}"
+          OS="${{ matrix.config.os }}"
+          PLATFORM="${{ matrix.config.platform }}"
           COMPILER="${{ matrix.config.cc }}"
           COMMIT_SHA="${{ needs.get-latest-tag.outputs.commit_sha }}"
 
@@ -296,7 +371,7 @@ jobs:
           cp build/bin/doxy* "${PACKAGE_DIR}/bin/"
 
           # Create compressed package
-          TARBALL="doxygen-${VERSION}.${PLATFORM}-${COMPILER}.tar.gz"
+          TARBALL="doxygen-${VERSION}.${OS}-${PLATFORM}-${COMPILER}.tar.gz"
           tar -czvf "${TARBALL}" "${PACKAGE_DIR}"
 
           # Prepare artifacts directory
@@ -359,7 +434,8 @@ jobs:
 
       - name: Create tag and push
         run: |
-          RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}"
+          CURRENT_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
+          RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}-$CURRENT_TIME"
           COMMIT_SHA="${{ needs.get-latest-tag.outputs.commit_sha }}"
 
           # Clean up possible line breaks
@@ -372,12 +448,13 @@ jobs:
             git push origin $RELEASE_TAG
           fi
 
-          # Create release targeting specific commit SHA
+          # Create prerelease targeting specific commit SHA
           if ! gh release view $RELEASE_TAG >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \
               --title "Doxygen $RELEASE_TAG" \
               --notes "Automated build from official source" \
-              --target "$COMMIT_SHA"
+              --target "$COMMIT_SHA" \
+              --prerelease
           fi
 
           # Upload all artifacts to release

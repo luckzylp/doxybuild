@@ -1,4 +1,4 @@
-name: Doxygen Build and Release with llvm source build on ubuntu-22.04
+name: Doxygen Build and Release on ubuntu-20.04
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  # Job to determine the latest release tag
+  # Job to fetch the latest Doxygen release tag
   get-latest-tag:
     runs-on: ubuntu-latest
     outputs:
@@ -23,6 +23,7 @@ jobs:
       - name: Get latest release tag
         id: get_tag
         run: |
+          # Fetch the latest release tag from Doxygen GitHub repository
           LATEST_TAG=$(curl -s "https://api.github.com/repos/doxygen/doxygen/releases/latest" | jq -r '.tag_name')
           echo "latest_tag=$LATEST_TAG" >> $GITHUB_OUTPUT
           echo "Using latest tag: $LATEST_TAG"
@@ -30,6 +31,7 @@ jobs:
       - name: Determine build ref
         id: get_ref
         run: |
+          # Use custom ref if provided, otherwise use latest tag
           if [ -n "${{ github.event.inputs.ref }}" ]; then
             echo "Using custom ref: ${{ github.event.inputs.ref }}"
             echo "ref=${{ github.event.inputs.ref }}" >> $GITHUB_OUTPUT
@@ -63,38 +65,105 @@ jobs:
       contents: write
     needs: get-latest-tag
     name: ${{ matrix.config.name }}
-    runs-on: ${{ matrix.config.os }}
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:20.04  # Use Ubuntu 20.04 container
+      options: --user root
     strategy:
       fail-fast: false
       matrix:
         config:
-          - {
-              name: "Ubuntu Latest GCC Release x86_64",
-              os: ubuntu-22.04,
-              build_type: "Release",
-              cc: "gcc",
-              cxx: "g++",
-              build_gen: "Unix Makefiles",
-              cmake_extra_opts:
-                '-Duse_libclang=YES -Dstatic_libclang=YES
-                -Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
-                -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
-                -DBUILD_SHARED_LIBS=OFF',
-            }
-          - {
-              name: "Ubuntu Latest Clang Release x86_64",
-              os: ubuntu-22.04,
-              build_type: "Release",
-              cc: "clang",
-              cxx: "clang++",
-              build_gen: "Unix Makefiles",
-              cmake_extra_opts:
-                '-Duse_libclang=YES -Dstatic_libclang=YES -Duse_libc++=NO
-                -Dbuild_search=YES -Dbuild_app=YES -Dbuild_parse=YES
-                -DCMAKE_FIND_LIBRARY_SUFFIXES=".a"
-                -DBUILD_SHARED_LIBS=OFF',
-            }
+          # GCC build configuration for Ubuntu 20.04
+          - name: "Ubuntu 20.04 GCC Release x86_64"
+            os: ubuntu-20.04
+            platform: amd64
+            build_type: "Release"
+            cc: "gcc"
+            cxx: "g++"
+            build_gen: "Ninja"
+            cmake_extra_opts: >-
+              "-Duse_libclang=YES"
+              "-Dstatic_libclang=YES"
+              "-Dbuild_search=YES"
+              "-Dbuild_app=YES"
+              "-Dbuild_parse=YES"
+              "-Dbuild_doc=YES"
+              "-DCMAKE_FIND_LIBRARY_SUFFIXES=\".a\""
+              "-DBUILD_SHARED_LIBS=OFF"
+              "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++"
+              "-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++"
+
+          # Clang build configuration for Ubuntu 20.04 using clang-9
+          - name: "Ubuntu 20.04 Clang Release x86_64"
+            os: ubuntu-20.04
+            platform: amd64
+            build_type: "Release"
+            cc: "clang"
+            cxx: "clang++"
+            build_gen: "Ninja"
+            cmake_extra_opts: >-
+              "-Duse_libclang=YES"
+              "-Dstatic_libclang=YES"
+              "-Duse_libc++=NO"
+              "-Dbuild_search=YES"
+              "-Dbuild_app=YES"
+              "-Dbuild_parse=YES"
+              "-Dbuild_doc=YES"
+              "-DCMAKE_FIND_LIBRARY_SUFFIXES=\".a\""
+              "-DBUILD_SHARED_LIBS=OFF"
+              "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++"
+              "-DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++"
+
     steps:
+      - name: Install core build dependencies
+        run: |
+          # Update package lists
+          apt-get update
+
+          # Install absolutely essential dependencies first
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates \
+            software-properties-common \
+            apt-transport-https \
+            gnupg \
+            wget \
+            file
+
+          # Add required repositories
+          add-apt-repository -y ppa:git-core/ppa
+
+          # Install Kitware signing key properly
+          wget -qO- https://apt.kitware.com/keys/kitware-archive-latest.asc | \
+            gpg --dearmor -o /usr/share/keyrings/kitware-archive-keyring.gpg
+          echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ focal main" | \
+            tee /etc/apt/sources.list.d/kitware.list >/dev/null
+
+          # Update again with new repositories
+          apt-get update
+
+          # Install all build dependencies
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ninja-build \
+            libz-dev \
+            libc-ares-dev \
+            p7zip-full \
+            curl \
+            jq \
+            git \
+            cmake \
+            python3.8 \
+            python3.8-dev \
+            python-is-python3 \
+            build-essential \
+            binutils \
+            gcc-9 \
+            g++-9 \
+            bison \
+            flex
+
+          ln -sf /usr/bin/python3.8 /usr/bin/python
+          python --version
+
       - name: Checkout doxygen
         uses: actions/checkout@v4
         with:
@@ -102,103 +171,98 @@ jobs:
           ref: ${{ needs.get-latest-tag.outputs.release_ref }}
           fetch-depth: 0
 
-      - name: Install LaTeX (Linux)
+
+      - name: Install clang-9 (Clang builds only)
         run: |
-          sudo apt update --fix-missing
-          sudo apt upgrade
-          sudo apt update
-          sudo apt-get install texlive texlive-latex-recommended texlive-extra-utils texlive-latex-extra texlive-font-utils
-        if: startsWith(matrix.config.os,'ubuntu-')
+          # Completely remove any existing LLVM/Clang installations
+          apt-get remove --purge -y '^llvm-.*' '^clang-.*' '^libclang-.*' '^libllvm.*' || true
+          apt-get autoremove -y
+          apt-get clean
+          echo "All existing LLVM/Clang versions purged"
 
-      - name: Uninstall existing LLVM/Clang
-        run: |
-          sudo apt remove --purge -y '^llvm-.*' '^clang-.*' '^libclang-.*' '^libllvm.*' || true
-          sudo apt autoremove -y
-          sudo apt clean
-        if: matrix.config.os == 'ubuntu-22.04'
+          # Install Clang-9 and development tools
+          apt-get install -y clang-9 libclang-9-dev
 
-      - name: Install LLVM-14 (Clang target only)
-        run: |
-          sudo apt update
-          sudo apt install -y clang-14 libclang-14-dev
-          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-14 100
-          sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-14 100
-          clang++ -v
-        if: matrix.config.cc == 'clang' && matrix.config.os == 'ubuntu-22.04'
-
-      - name: Build and install LLVM with static libraries
-        run: |
-          # Install build dependencies
-          sudo apt install -y cmake ninja-build build-essential
-
-          # Get latest stable LLVM tag
-          LATEST_TAG=$(git ls-remote --tags --refs --sort=-v:refname https://github.com/llvm/llvm-project.git | \
-                       grep -Eo 'refs/tags/llvmorg-[0-9.]+$' | sort -V | tail -n1 | sed 's/refs\/tags\///')
-          echo "Building LLVM tag: $LATEST_TAG"
-
-          # Clone LLVM project
-          git clone --depth 1 --branch "$LATEST_TAG" https://github.com/llvm/llvm-project.git
-
-          # Configure compiler
-          if [ "${{ matrix.config.cc }}" = "gcc" ]; then
-            export CC=gcc
-            export CXX=g++
-          elif [ "${{ matrix.config.cc }}" = "clang" ]; then
-            export CC=clang
-            export CXX=clang++
-          fi
-
-          # Build configuration
-          mkdir llvm-build
-          cd llvm-build
-          cmake -G Ninja -S ../llvm-project/llvm -B . \
-            -DLLVM_ENABLE_PROJECTS="clang" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=$HOME/llvm-install \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DLLVM_ENABLE_RTTI=ON \
-            -DLLVM_INCLUDE_TESTS=OFF \
-            -DLLVM_INCLUDE_EXAMPLES=OFF \
-            -DLLVM_INCLUDE_BENCHMARKS=OFF
-
-          # Build and install
-          cmake --build . --parallel $(nproc) --target install
-          cd ..
+          # Set Clang-9 as default compiler
+          update-alternatives --install /usr/bin/clang clang /usr/bin/clang-9 100
+          update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-9 100
+          update-alternatives --install /usr/bin/cc cc /usr/bin/clang-9 100
+          update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-9 100
 
           # Verify installation
-          ls -R $HOME/llvm-install
-        shell: bash
-        if: matrix.config.os == 'ubuntu-22.04'
+          clang --version
+          clang++ --version
+        if: matrix.config.cc == 'clang'
 
-      - name: Install libxapian (Ubuntu 22.04)
+      - name: Install LaTeX (Linux)
         run: |
-          sudo apt update
-          sudo apt install libxapian-dev
-        if: matrix.config.os == 'ubuntu-22.04'
+          DEBIAN_FRONTEND=noninteractive apt update --fix-missing -y
+          DEBIAN_FRONTEND=noninteractive  apt upgrade -y
+          apt update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y texlive texlive-latex-recommended texlive-extra-utils texlive-latex-extra texlive-font-utils
+
+      - name: Download and extract static LLVM
+        run: |
+          COMPILER="${{ matrix.config.cc }}"
+
+          # Fetch static clang library built for Ubuntu 20.04
+          # Get all releases (including pre-releases) and filter by ubuntu20.04 tag
+          releases=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          "https://api.github.com/repos/luckzylp/clangbuild/releases?per_page=100")
+
+          # Find latest release matching criteria
+          release_tag=$(echo "$releases" | jq -r \
+            'map(select(.tag_name | contains("ubuntu20.04")))
+            | sort_by(.published_at) | reverse | .[0].tag_name')
+
+          if [ -z "$release_tag" ] || [ "$release_tag" = "null" ]; then
+            echo "::error::No ubuntu20.04 release found"
+            exit 1
+          fi
+
+          # Use release_tag variable directly instead of step output (fixes invalid reference)
+          assets=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/luckzylp/clangbuild/releases/tags/${release_tag}")
+
+          echo "assets: $assets"
+
+          # Find asset URL using regex pattern
+          asset_url=$(echo "$assets" | grep -Eo "https://[^\"]*linux-${COMPILER}\.tar\.gz")
+
+          echo "asset_url: $asset_url"
+
+          if [ -z "$asset_url" ]; then
+            echo "::error::No matching asset found for COMPILER=${COMPILER}"
+            exit 1
+          fi
+
+          curl -L -o "llvm-static.tar.gz" "$asset_url"
+          echo "Downloaded: $(ls -lh llvm-static.tar.gz)"
+
+          mkdir -p "$HOME/llvm-install"
+          tar -xzf llvm-static.tar.gz -C "$HOME/llvm-install" --strip-components=1
+          echo "LLVM installed at: $HOME/llvm-install"
+        shell: bash
+
+      - name: Install libxapian (Linux)
+        run: |
+          apt update
+          apt install -y libxapian-dev
 
       - name: Install Ghostscript (Linux)
         run: |
-          sudo apt update
-          sudo apt-get install ghostscript
-        if: startsWith(matrix.config.os,'ubuntu-')
+          apt update
+          apt-get install -y ghostscript
 
       - name: Install xmllint (Linux)
         run: |
-          sudo apt-get update
-          sudo apt-get install libxml2-utils
-        if: startsWith(matrix.config.os,'ubuntu-')
+          apt-get update
+          apt-get install -y libxml2-utils
 
       - name: Install Graphviz (Linux)
         run: |
-          sudo apt update
-          sudo apt-get install graphviz
-        if: startsWith(matrix.config.os,'ubuntu-')
-
-      - name: Install Qt 5
-        uses: jdpurcell/install-qt-action@v5
-        with:
-          version: 5.*
-        if: startsWith(matrix.config.os,'macos-')!=true && matrix.config.os != 'ubuntu-24.04-arm'
+          apt update
+          apt-get install -y graphviz
 
       - name: Check tool versions (Linux)
         shell: bash
@@ -231,10 +295,7 @@ jobs:
           set(ENV{CC} ${{ matrix.config.cc }})
           set(ENV{CXX} ${{ matrix.config.cxx }})
 
-          # Set static linking flags
-          set(LINKER_FLAGS "-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++ -DCMAKE_SHARED_LINKER_FLAGS=-static-libgcc -static-libstdc++")
-
-          # Set path to built LLVM
+          # Set path to downloaded LLVM
           set(LLVM_PATH "-DCMAKE_PREFIX_PATH=$ENV{HOME}/llvm-install")
 
           execute_process(
@@ -243,11 +304,8 @@ jobs:
               -B build
               -D CMAKE_BUILD_TYPE=${{ matrix.config.build_type }}
               -G "${{ matrix.config.build_gen }}"
-              -Dbuild_doc=YES
-              -Dbuild_wizard=YES
               ${{ matrix.config.cmake_extra_opts }}
               ${LLVM_PATH}
-              ${LINKER_FLAGS}
               RESULT_VARIABLE result
           )
           if (NOT result EQUAL 0)
@@ -322,7 +380,8 @@ jobs:
           # Format version number from release tag
           RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}"
           VERSION=$(echo "${RELEASE_TAG}" | sed -e 's/Release_//' -e 's/_/./g')
-          PLATFORM="${{ matrix.config.os }}"
+          OS="${{ matrix.config.os }}"
+          PLATFORM="${{ matrix.config.platform }}"
           COMPILER="${{ matrix.config.cc }}"
           COMMIT_SHA="${{ needs.get-latest-tag.outputs.commit_sha }}"
 
@@ -343,7 +402,7 @@ jobs:
           cp build/bin/doxy* "${PACKAGE_DIR}/bin/"
 
           # Create compressed package
-          TARBALL="doxygen-${VERSION}.${PLATFORM}-${COMPILER}.tar.gz"
+          TARBALL="doxygen-${VERSION}.${OS}-${PLATFORM}-${COMPILER}.tar.gz"
           tar -czvf "${TARBALL}" "${PACKAGE_DIR}"
 
           # Prepare artifacts directory
@@ -406,7 +465,8 @@ jobs:
 
       - name: Create tag and push
         run: |
-          RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}"
+          CURRENT_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
+          RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}-$CURRENT_TIME"
           COMMIT_SHA="${{ needs.get-latest-tag.outputs.commit_sha }}"
 
           # Clean up possible line breaks
@@ -419,12 +479,13 @@ jobs:
             git push origin $RELEASE_TAG
           fi
 
-          # Create release targeting specific commit SHA
+          # Create prerelease targeting specific commit SHA
           if ! gh release view $RELEASE_TAG >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \
               --title "Doxygen $RELEASE_TAG" \
               --notes "Automated build from official source" \
-              --target "$COMMIT_SHA"
+              --target "$COMMIT_SHA" \
+              --prerelease
           fi
 
           # Upload all artifacts to release
