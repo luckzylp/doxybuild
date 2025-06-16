@@ -346,17 +346,16 @@ jobs:
             message(FATAL_ERROR "Bad exit status")
           endif()
 
-          sed -i '/doxysearch\.cgi:/,// {
-            /LINK_ARGS =/ {
-                s|$$.*/libz.so$$|\1 -lrt|
-            }
-          }' build.ninja
-
-          sed -i '/doxyindexer:/,// {
-            /LINK_ARGS =/ {
-                s|$$.*/libz.so$$|\1 -lrt|
-            }
-          }' build.ninja
+          execute_process(
+            COMMAND sed -i
+              -e '/doxysearch\\.cgi:/,/LINK_ARGS =/ s|/libz\\.so|/libz.so -lrt|'
+              -e '/doxyindexer:/,/LINK_ARGS =/ s|/libz\\.so|/libz.so -lrt|'
+              build/build.ninja
+              RESULT_VARIABLE sed_result
+            )
+          if (NOT sed_result EQUAL 0)
+            message(FATAL_ERROR "Failed to patch build.ninja")
+          endif()
 
       # Build step
       - name: Build
