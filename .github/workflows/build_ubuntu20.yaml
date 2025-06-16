@@ -348,8 +348,8 @@ jobs:
 
           execute_process(
             COMMAND sed -i
-              -e '/doxysearch\\.cgi:/,/LINK_ARGS =/ s|/libz\\.so|/libz.so -lrt|'
-              -e '/doxyindexer:/,/LINK_ARGS =/ s|/libz\\.so|/libz.so -lrt|'
+              -e '/doxysearch\\.cgi:/,/LINK_ARGS =/s|/libz\\.so|/libz.so -lrt|'
+              -e '/doxyindexer:/,/LINK_ARGS =/s|/libz\\.so|/libz.so -lrt|'
               build/build.ninja
               RESULT_VARIABLE sed_result
             )
