@@ -349,8 +349,8 @@ jobs:
       - name: patch ninja
         shell: bash
         run: |
-          sed -i 's|COMMAND = /usr/bin/g++ |COMMAND = /usr/bin/g++ -lrt |g' build.ninja
-          sed -i 's|LINK_ARGS = |LINK_ARGS = -lrt |g' build.ninja
+          sed -i 's|COMMAND = /usr/bin/g++ |COMMAND = /usr/bin/g++ -lrt |g' build/build.ninja
+          sed -i 's|LINK_ARGS = |LINK_ARGS = -lrt |g' build/build.ninja
     
       # Build step
       - name: Build
