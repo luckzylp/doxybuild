@@ -346,19 +346,12 @@ jobs:
             message(FATAL_ERROR "Bad exit status")
           endif()
 
-          execute_process(
-            COMMAND sed -i.bak
-               -e "/LINK_ARGS =.*doxysearch\\.cgi/s|/libz\\.so|/libz.so -lrt|"
-               -e "/LINK_ARGS =.*doxyindexer/s|/libz\\.so|/libz.so -lrt|"
-               build/build.ninja
-               WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-               RESULT_VARIABLE sed_result
-            )
-                
-          if (NOT sed_result EQUAL 0)
-            message(FATAL_ERROR "Failed to patch build.ninja")
-          endif()
-
+      - name: patch ninja
+        shell: bash
+        run: |
+          sed -i 's|COMMAND = /usr/bin/g++ |COMMAND = /usr/bin/g++ -lrt |g' build.ninja
+          sed -i 's|LINK_ARGS = |LINK_ARGS = -lrt |g' build.ninja
+    
       # Build step
       - name: Build
         shell: cmake -P {0}
