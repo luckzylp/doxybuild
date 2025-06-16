@@ -251,7 +251,7 @@ jobs:
           apt-get install -y graphviz
 
       - name: Install Qt 5
-        uses: jurplel/install-qt-action@v5
+        uses: jurplel/install-qt-action@v3
         with:
           version: 5.*
 
