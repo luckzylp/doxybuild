@@ -1,4 +1,4 @@
-name: Doxygen Build and Release with llvm source build
+name: Doxygen Build and Release with llvm source build on ubuntu-22.04
 
 on:
   workflow_dispatch:

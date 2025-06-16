@@ -1,4 +1,4 @@
-name: Doxygen Build and Release with precompiled static clang
+name: Doxygen Build and Release on ubuntu-22.04
 
 on:
   workflow_dispatch:

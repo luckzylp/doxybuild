@@ -1,4 +1,4 @@
-name: Doxygen Build and Release with precompiled static clang
+name: Doxygen Build and Release on ubuntu-20.04
 
 on:
   workflow_dispatch:
@@ -150,6 +150,7 @@ jobs:
             libc-ares-dev \
             p7zip-full \
             curl \
+            jq \
             git \
             cmake \
             python3.8 \
@@ -208,11 +209,9 @@ jobs:
             exit 1
           fi
 
-          echo "release_tag=$release_tag" >> $GITHUB_OUTPUT
-
-          # Get release assets
+          # Use release_tag variable directly instead of step output (fixes invalid reference)
           assets=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/luckzylp/clangbuild/releases/tags/${{ steps.find-release.outputs.release_tag }}")
+            "https://api.github.com/repos/luckzylp/clangbuild/releases/tags/${release_tag}")  # <--- FIX 2: Use variable directly
 
           # Find asset URL using regex pattern
           asset_url=$(echo "$assets" | grep -Eo "https://[^\"]*linux-${COMPILER}\.tar\.gz")
@@ -237,18 +236,18 @@ jobs:
 
       - name: Install Ghostscript (Linux)
         run: |
-          sudo apt update
-          sudo apt-get install ghostscript
+          apt update
+          apt-get install ghostscript
 
       - name: Install xmllint (Linux)
         run: |
-          sudo apt-get update
-          sudo apt-get install libxml2-utils
+          apt-get update
+          apt-get install libxml2-utils
 
       - name: Install Graphviz (Linux)
         run: |
-          sudo apt update
-          sudo apt-get install graphviz
+          apt update
+          apt-get install graphviz
 
       - name: Install Qt 5
         uses: jdpurcell/install-qt-action@v5
