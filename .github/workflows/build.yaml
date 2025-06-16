@@ -434,7 +434,7 @@ jobs:
 
       - name: Create tag and push
         run: |
-          CURRENT_TIME=$(date -u '+%Y-%m-%d %H:%M:%S')
+          CURRENT_TIME=$(date -u '+%Y%m-%d%H%M%S')
           RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}-$CURRENT_TIME"
           COMMIT_SHA="${{ needs.get-latest-tag.outputs.commit_sha }}"
 
