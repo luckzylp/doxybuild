@@ -212,8 +212,12 @@ jobs:
           assets=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/luckzylp/clangbuild/releases/tags/${release_tag}")
 
+          echo "assets: $assets"
+
           # Find asset URL using regex pattern
           asset_url=$(echo "$assets" | grep -Eo "https://[^\"]*linux-${COMPILER}\.tar\.gz")
+
+          echo "asset_url: $asset_url"
 
           if [ -z "$asset_url" ]; then
             echo "::error::No matching asset found for COMPILER=${COMPILER}"
