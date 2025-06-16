@@ -157,7 +157,9 @@ jobs:
             build-essential \
             binutils \
             gcc-9 \
-            g++-9
+            g++-9 \
+            bison \
+            flex
 
           ln -sf /usr/bin/python3.8 /usr/bin/python
           python --version
