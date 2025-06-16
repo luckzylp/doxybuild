@@ -215,7 +215,7 @@ jobs:
           cd "xapian-core-${XAPIAN_VERSION}"
 
           # Configure static build
-          ./configure --disable-shared --enable-static --prefix=/usr/local
+           ./configure --disable-shared --enable-static --prefix=/usr/local LDFLAGS="-lrt"
 
           # Build and install
           make -j$(nproc)
