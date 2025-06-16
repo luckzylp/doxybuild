@@ -211,7 +211,7 @@ jobs:
 
           # Use release_tag variable directly instead of step output (fixes invalid reference)
           assets=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/luckzylp/clangbuild/releases/tags/${release_tag}")  # <--- FIX 2: Use variable directly
+            "https://api.github.com/repos/luckzylp/clangbuild/releases/tags/${release_tag}")
 
           # Find asset URL using regex pattern
           asset_url=$(echo "$assets" | grep -Eo "https://[^\"]*linux-${COMPILER}\.tar\.gz")
@@ -232,22 +232,22 @@ jobs:
       - name: Install libxapian (Linux)
         run: |
           apt update
-          apt install libxapian-dev
+          apt install -y libxapian-dev
 
       - name: Install Ghostscript (Linux)
         run: |
           apt update
-          apt-get install ghostscript
+          apt-get install -y ghostscript
 
       - name: Install xmllint (Linux)
         run: |
           apt-get update
-          apt-get install libxml2-utils
+          apt-get install -y libxml2-utils
 
       - name: Install Graphviz (Linux)
         run: |
           apt update
-          apt-get install graphviz
+          apt-get install -y graphviz
 
       - name: Install Qt 5
         uses: jdpurcell/install-qt-action@v5
