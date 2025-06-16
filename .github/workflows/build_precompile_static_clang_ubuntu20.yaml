@@ -65,6 +65,7 @@ jobs:
       contents: write
     needs: get-latest-tag
     name: ${{ matrix.config.name }}
+    runs-on: ubuntu-latest
     container:
       image: ubuntu:20.04  # Use Ubuntu 20.04 container
       options: --user root
@@ -370,7 +371,7 @@ jobs:
           # Format version number from release tag
           RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}"
           VERSION=$(echo "${RELEASE_TAG}" | sed -e 's/Release_//' -e 's/_/./g')
-	  OS="${{ matrix.config.os }}"
+          OS="${{ matrix.config.os }}"
           PLATFORM="${{ matrix.config.platform }}"
           COMPILER="${{ matrix.config.cc }}"
           COMMIT_SHA="${{ needs.get-latest-tag.outputs.commit_sha }}"
@@ -474,7 +475,7 @@ jobs:
               --title "Doxygen $RELEASE_TAG" \
               --notes "Automated build from official source" \
               --target "$COMMIT_SHA" \
-	      --prerelease
+              --prerelease
           fi
 
           # Upload all artifacts to release
