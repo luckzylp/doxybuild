@@ -194,6 +194,40 @@ jobs:
           clang++ --version
         if: matrix.config.cc == 'clang'
 
+      # Replace system libxapian with static build from source
+      - name: Build and install static libxapian
+        run: |
+          # Remove dynamically linked xapian libraries to ensure static version is used
+          apt-get purge -y libxapian-dev
+          apt-get autoremove -y
+          apt-get clean
+
+          # Install build dependencies for xapian
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y libtool m4 automake
+
+          # Specify xapian version to build
+          XAPIAN_VERSION="1.4.21"
+
+          # Download xapian source
+          wget "https://oligarchy.co.uk/xapian/${XAPIAN_VERSION}/xapian-core-${XAPIAN_VERSION}.tar.xz"
+          tar -xf "xapian-core-${XAPIAN_VERSION}.tar.xz"
+          cd "xapian-core-${XAPIAN_VERSION}"
+
+          # Configure static build
+          ./configure --disable-shared --enable-static --prefix=/usr/local
+
+          # Build and install
+          make -j$(nproc)
+          make install
+
+          # Cleanup build files
+          cd ..
+          rm -rf "xapian-core-${XAPIAN_VERSION}"*
+        env:
+          CC: ${{ matrix.config.cc }}
+          CXX: ${{ matrix.config.cxx }}
+
       - name: Install LaTeX (Linux)
         run: |
           DEBIAN_FRONTEND=noninteractive apt update --fix-missing -y
@@ -244,10 +278,10 @@ jobs:
           echo "LLVM installed at: $HOME/llvm-install"
         shell: bash
 
-      - name: Install libxapian (Linux)
-        run: |
-          apt update
-          apt install -y libxapian-dev
+      # - name: Install libxapian (Linux)
+      #   run: |
+      #     apt update
+      #     apt install -y libxapian-dev
 
       - name: Install Ghostscript (Linux)
         run: |
