@@ -163,6 +163,7 @@ jobs:
 
           ln -sf /usr/bin/python3.8 /usr/bin/python
           python --version
+          gcc -v
 
       - name: Checkout doxygen
         uses: actions/checkout@v4
@@ -456,14 +457,6 @@ jobs:
           mkdir -p artifacts
           mv "${TARBALL}" artifacts/
 
-          # Create build info file
-          echo "Doxygen Version: ${VERSION}" > artifacts/build-info.txt
-          echo "Build: ${{ matrix.config.name }}" >> artifacts/build-info.txt
-          echo "OS: ${{ matrix.config.os }}" >> artifacts/build-info.txt
-          echo "Compiler: ${{ matrix.config.cc }}" >> artifacts/build-info.txt
-          echo "Build Type: ${{ matrix.config.build_type }}" >> artifacts/build-info.txt
-          echo "Commit: $COMMIT_SHA" >> artifacts/build-info.txt
-          echo "Build Date: $(date)" >> artifacts/build-info.txt
         shell: bash
 
       # Upload generated artifacts

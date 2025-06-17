@@ -52,10 +52,9 @@ jobs:
                 repo: 'doxygen',
                 ref: ref
               });
-              return response.data.sha;
+            	core.setOutput('commit_sha', response.data.sha);
             } catch (error) {
-              console.error(`Error fetching commit for ref '${ref}': ${error}`);
-              throw error;
+              core.setFailed(`Error fetching commit for ref '${ref}': ${error}`);
             }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -65,6 +64,9 @@ jobs:
       contents: write
     needs: get-latest-tag
     name: ${{ matrix.config.name }}
+    outputs:
+      clang_version: ${{ steps.libclang.outputs.clang_version }}
+      xapian_version: ${{ steps.libxapian.outputs.xapian_version }}
     runs-on: ${{ matrix.config.os }}
     strategy:
       fail-fast: false
@@ -118,6 +120,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install jq curl ninja-build build-essential wget file bison flex
+          gcc -v
         if: startsWith(matrix.config.os,'ubuntu-')
 
       - name: Checkout doxygen
@@ -127,15 +130,7 @@ jobs:
           ref: ${{ needs.get-latest-tag.outputs.release_ref }}
           fetch-depth: 0
 
-      - name: Install LaTeX (Linux)
-        run: |
-          sudo apt update --fix-missing
-          sudo apt upgrade
-          sudo apt update
-          sudo apt-get install texlive texlive-latex-recommended texlive-extra-utils texlive-latex-extra texlive-font-utils
-        if: startsWith(matrix.config.os,'ubuntu-')
-
-      - name: Uninstall existing LLVM/Clang
+      - name: Install LLVM-14 (for Clang builds)
         run: |
           # Remove all existing LLVM/Clang packages and binaries
           sudo apt remove --purge -y '^llvm-.*' '^clang-.*' '^libclang-.*' '^libllvm.*' || true
@@ -145,10 +140,7 @@ jobs:
           sudo rm -f /usr/bin/clang* /usr/bin/llvm*
           # Verify removal
           which clang || echo "clang not found (expected after uninstall)"
-        if: matrix.config.os == 'ubuntu-22.04'
 
-      - name: Install LLVM-14 (for Clang builds)
-        run: |
           # Install clang-14 specifically for Clang-based builds
           sudo apt update
           sudo apt install -y clang-14 libclang-14-dev
@@ -159,7 +151,53 @@ jobs:
           clang++ -v
         if: matrix.config.cc == 'clang' && matrix.config.os == 'ubuntu-22.04'
 
+      # Replace system libxapian with static build from source
+      - name: Build and install static libxapian
+        id: libxapian
+        run: |
+          # Remove dynamically linked xapian libraries to ensure static version is used
+          sudo apt-get purge -y libxapian-dev
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+
+          # Install build dependencies for xapian
+          sudo apt-get update
+          sudo apt-get install -y libtool m4 automake
+
+          # Specify xapian version to build
+          XAPIAN_VERSION="1.4.21"
+          echo "xapian_version=$XAPIAN_VERSION" >> $GITHUB_OUTPUT
+
+          # Download xapian source
+          wget "https://oligarchy.co.uk/xapian/${XAPIAN_VERSION}/xapian-core-${XAPIAN_VERSION}.tar.xz"
+          tar -xf "xapian-core-${XAPIAN_VERSION}.tar.xz"
+          cd "xapian-core-${XAPIAN_VERSION}"
+
+          # Configure static build
+           ./configure --disable-shared --enable-static --prefix=/usr/local
+
+          # Build and install
+          make -j$(nproc)
+          sudo make install
+
+          # Cleanup build files
+          cd ..
+          rm -rf "xapian-core-${XAPIAN_VERSION}"*
+        env:
+          CC: ${{ matrix.config.cc }}
+          CXX: ${{ matrix.config.cxx }}
+          if: matrix.config.os == 'ubuntu-22.04'
+
+      - name: Install LaTeX (Linux)
+        run: |
+          sudo apt update --fix-missing
+          sudo apt upgrade
+          sudo apt update
+          sudo apt-get install texlive texlive-latex-recommended texlive-extra-utils texlive-latex-extra texlive-font-utils
+        if: startsWith(matrix.config.os,'ubuntu-')
+
       - name: Download and extract static LLVM
+        id: libclang
         run: |
           COMPILER="${{ matrix.config.cc }}"
 
@@ -177,6 +215,17 @@ jobs:
             echo "::error::No ubuntu22.04 release found"
             exit 1
           fi
+
+          # clang version extraction
+          if [[ "$release_tag" =~ clang-v([0-9.]+)-static ]]; then
+            CLANG_VERSION="${BASH_REMATCH[1]}"
+            echo "bash regmatch--> CLANG_VERSION=$CLANG_VERSION"
+          else
+            # Fallback to extracting semantic version if pattern doesn't match
+            CLANG_VERSION=$(echo "$release_tag" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            echo "semantic version--> CLANG_VERSION=$CLANG_VERSION"
+          fi
+          echo "clang_version=$CLANG_VERSION" >> $GITHUB_OUTPUT
 
           # Use release_tag variable directly instead of step output (fixes invalid reference)
           assets=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
@@ -203,22 +252,22 @@ jobs:
         shell: bash
         if: matrix.config.os == 'ubuntu-22.04'
 
-      - name: Install libxapian (Ubuntu 22.04)
-        run: |
-          sudo apt update
-          sudo apt install libxapian-dev
-        if: matrix.config.os == 'ubuntu-22.04'
+      # - name: Install libxapian (Ubuntu 22.04)
+      #  run: |
+      #    sudo apt update
+      #    sudo apt install -y libxapian-dev
+      #  if: matrix.config.os == 'ubuntu-22.04'
 
       - name: Install Ghostscript (Linux)
         run: |
           sudo apt update
-          sudo apt-get install ghostscript
+          sudo apt-get install -y ghostscript
         if: startsWith(matrix.config.os,'ubuntu-')
 
       - name: Install xmllint (Linux)
         run: |
           sudo apt-get update
-          sudo apt-get install libxml2-utils
+          sudo apt-get install -y libxml2-utils
         if: startsWith(matrix.config.os,'ubuntu-')
 
       - name: Install Graphviz (Linux)
@@ -280,6 +329,11 @@ jobs:
           if (NOT result EQUAL 0)
             message(FATAL_ERROR "Bad exit status")
           endif()
+
+      - name: patch ninja
+        shell: bash
+        run: |
+          sed -i 's|/usr/local/lib/libxapian\.a  /usr/lib/x86_64-linux-gnu/libz\.so|& -lrt|g' build/build.ninja
 
       # Build step
       - name: Build
@@ -378,14 +432,6 @@ jobs:
           mkdir -p artifacts
           mv "${TARBALL}" artifacts/
 
-          # Create build info file
-          echo "Doxygen Version: ${VERSION}" > artifacts/build-info.txt
-          echo "Build: ${{ matrix.config.name }}" >> artifacts/build-info.txt
-          echo "OS: ${{ matrix.config.os }}" >> artifacts/build-info.txt
-          echo "Compiler: ${{ matrix.config.cc }}" >> artifacts/build-info.txt
-          echo "Build Type: ${{ matrix.config.build_type }}" >> artifacts/build-info.txt
-          echo "Commit: $COMMIT_SHA" >> artifacts/build-info.txt
-          echo "Build Date: $(date)" >> artifacts/build-info.txt
         shell: bash
 
       # Upload generated artifacts
@@ -436,23 +482,46 @@ jobs:
         run: |
           CURRENT_TIME=$(date -u '+%Y%m%d%H%M%S')
           RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}-$CURRENT_TIME"
-          COMMIT_SHA="${{ needs.get-latest-tag.outputs.commit_sha }}"
+          COMMIT_SHA=$(git rev-parse HEAD)
+          CLANG_VERSION="${{ needs.build.outputs.clang_version }}"
+          XAPIAN_VERSION="${{ needs.build.outputs.xapian_version }}"
 
           # Clean up possible line breaks
           COMMIT_SHA=$(echo "$COMMIT_SHA" | tr -d '\n')
 
+          # Validate required values
+          if [ -z "$COMMIT_SHA" ]; then
+            echo "::error::COMMIT_SHA is empty, cannot create tag"
+            exit 1
+          fi
+
           # Create tag if doesn't exist
-          if ! git rev-parse $RELEASE_TAG >/dev/null 2>&1; then
-            echo "Creating tag $RELEASE_TAG pointing to $COMMIT_SHA"
-            git tag $RELEASE_TAG $COMMIT_SHA
-            git push origin $RELEASE_TAG
+          if ! git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
+              echo "Creating tag $RELEASE_TAG pointing to $COMMIT_SHA"
+              git tag "$RELEASE_TAG" "$COMMIT_SHA"
+              git push origin "$RELEASE_TAG"
           fi
 
           # Create prerelease targeting specific commit SHA
-          if ! gh release view $RELEASE_TAG >/dev/null 2>&1; then
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            {
+              echo "Doxygen $RELEASE_TAG Build"
+              echo ""
+              echo "**Build Details:**"
+              echo "- static clang Version: $CLANG_VERSION"
+              echo "- Platform: x86_64 Linux"
+              echo "- Compilers: GCC-11 and Clang-14"
+              echo "- static xapian version: $XAPIAN_VERSION"
+              echo "- Built in Ubuntu 22.04 container"
+              echo ""
+              echo "**Artifacts:**"
+              echo "- GCC-built Doxygen on ubuntu-22.04"
+              echo "- Clang-built Doxygen on ubuntu-22.04"
+            } > release_notes.md
+
             gh release create "$RELEASE_TAG" \
               --title "Doxygen $RELEASE_TAG" \
-              --notes "Automated build from official source" \
+              --notes-file release_notes.md \
               --target "$COMMIT_SHA" \
               --prerelease
           fi
