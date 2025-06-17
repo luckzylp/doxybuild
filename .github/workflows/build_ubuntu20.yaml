@@ -525,14 +525,14 @@ jobs:
           COMMIT_SHA=$(echo "$COMMIT_SHA" | tr -d '\n')
 
           # Create tag if doesn't exist
-          if ! git rev-parse $RELEASE_TAG >/dev/null 2>&1; then
-            echo "Creating tag $RELEASE_TAG pointing to $COMMIT_SHA"
-            git tag $RELEASE_TAG $COMMIT_SHA
-            git push origin $RELEASE_TAG
+          if ! git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
+              echo "Creating tag $RELEASE_TAG pointing to $COMMIT_SHA"
+              git tag "$RELEASE_TAG" "$COMMIT_SHA"
+              git push origin "$RELEASE_TAG"
           fi
 
           # Create prerelease targeting specific commit SHA
-          if ! gh release view $RELEASE_TAG >/dev/null 2>&1; then
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             {
               echo "Doxygen $RELEASE_TAG" Build"
               echo ""
@@ -550,7 +550,7 @@ jobs:
             } > release_notes.md
 
           # Create prerelease targeting specific commit SHA
-          if ! gh release view $RELEASE_TAG >/dev/null 2>&1; then
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \
               --title "Doxygen $RELEASE_TAG" \
               --notes-file release_notes.md \
