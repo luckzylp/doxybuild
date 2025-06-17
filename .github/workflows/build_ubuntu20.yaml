@@ -208,7 +208,7 @@ jobs:
 
           # Specify xapian version to build
           XAPIAN_VERSION="1.4.21"
-          echo "xapian_version=$XAPIAN_VERSION" >> $GITHUB_ENV  # Export as environment variable
+          echo "xapian_version=$XAPIAN_VERSION" >> $GITHUB_OUTPUT
 
           # Download xapian source
           wget "https://oligarchy.co.uk/xapian/${XAPIAN_VERSION}/xapian-core-${XAPIAN_VERSION}.tar.xz"
@@ -265,7 +265,7 @@ jobs:
             CLANG_VERSION=$(echo "$release_tag" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
             echo "semantic version--> CLANG_VERSION=$CLANG_VERSION"
           fi
-          echo "clang_version=$CLANG_VERSION" >> $GITHUB_ENV
+          echo "clang_version=$CLANG_VERSION" >> $GITHUB_OUTPUT
 
           # Use release_tag variable directly instead of step output (fixes invalid reference)
           assets=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
