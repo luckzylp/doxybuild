@@ -257,9 +257,9 @@ jobs:
             exit 1
           fi
 
-          # Extract libclang version from release tag (assumes format ubuntu20.04-clang-v<version>-static)
-          CLANG_VERSION=$(echo "$release_tag" | sed -n 's/^.*clang-v$$[0-9.]*$$-static.*/\1/p')
-          echo "CLANG_VERSION=$CLANG_VERSION" >> $GITHUB_ENV  # Export as environment variable
+          # Capture clang version from release tag
+          CLANG_VERSION=$(echo "$release_tag" | sed -n 's/.*clang-v$$[0-9.]*$$-static.*/\1/p')
+          echo "CLANG_VERSION=$CLANG_VERSION" >> $GITHUB_ENV
 
           # Use release_tag variable directly instead of step output (fixes invalid reference)
           assets=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
