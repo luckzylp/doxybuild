@@ -534,7 +534,7 @@ jobs:
           # Create prerelease targeting specific commit SHA
           if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             {
-              echo "Doxygen $RELEASE_TAG" Build"
+              echo "Doxygen $RELEASE_TAG Build"
               echo ""
               echo "**Build Details:**"
               echo "- static clang Version: $CLANG_VERSION"
