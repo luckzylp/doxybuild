@@ -257,8 +257,15 @@ jobs:
             exit 1
           fi
 
-          # Capture clang version from release tag
-          CLANG_VERSION=$(echo "$release_tag" | sed -n 's/.*clang-v$$[0-9.]*$$-static.*/\1/p')
+          # clang version extraction
+          if [[ "$release_tag" =~ clang-v([0-9.]+)-static ]]; then
+            CLANG_VERSION="${BASH_REMATCH[1]}"
+            echo "bash regmatch--> CLANG_VERSION=$CLANG_VERSION"
+          else
+            # Fallback to extracting semantic version if pattern doesn't match
+            CLANG_VERSION=$(echo "$release_tag" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            echo "semantic version--> CLANG_VERSION=$CLANG_VERSION"
+          fi
           echo "CLANG_VERSION=$CLANG_VERSION" >> $GITHUB_ENV
 
           # Use release_tag variable directly instead of step output (fixes invalid reference)
