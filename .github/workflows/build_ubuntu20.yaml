@@ -67,8 +67,8 @@ jobs:
     name: ${{ matrix.config.name }}
     runs-on: ubuntu-latest
     outputs:
-      clang_version: ${{ steps.set_versions.outputs.clang_version }}
-      xapian_version: ${{ steps.set_versions.outputs.xapian_version }}
+      clang_version: ${{ steps.libclang.outputs.clang_version }}
+      xapian_version: ${{ steps.libxapian.outputs.xapian_version }}
     container:
       image: ubuntu:20.04  # Use Ubuntu 20.04 container
       options: --user root
@@ -198,6 +198,7 @@ jobs:
 
       # Replace system libxapian with static build from source
       - name: Build and install static libxapian
+        id: libxapian
         run: |
           # Remove dynamically linked xapian libraries to ensure static version is used
           apt-get purge -y libxapian-dev
@@ -239,6 +240,7 @@ jobs:
           DEBIAN_FRONTEND=noninteractive apt-get install -y texlive texlive-latex-recommended texlive-extra-utils texlive-latex-extra texlive-font-utils
 
       - name: Download and extract static LLVM
+        id: libclang
         run: |
           COMPILER="${{ matrix.config.cc }}"
 
@@ -291,11 +293,6 @@ jobs:
           tar -xzf llvm-static.tar.gz -C "$HOME/llvm-install" --strip-components=1
           echo "LLVM installed at: $HOME/llvm-install"
         shell: bash
-
-      # - name: Install libxapian (Linux)
-      #   run: |
-      #     apt update
-      #     apt install -y libxapian-dev
 
       - name: Install Ghostscript (Linux)
         run: |
@@ -364,7 +361,6 @@ jobs:
         shell: bash
         run: |
           sed -i 's|/usr/local/lib/libxapian\.a  /usr/lib/x86_64-linux-gnu/libz\.so|& -lrt|g' build/build.ninja
-          cat build/build.ninja
 
       # Build step
       - name: Build
@@ -519,9 +515,11 @@ jobs:
 
       - name: Create tag and push
         run: |
-          CURRENT_TIME=$(date -u '+%Y%m-%d%H%M%S')
+          CURRENT_TIME=$(date -u '+%Y%m%d%H%M%S')
           RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}-$CURRENT_TIME"
           COMMIT_SHA="${{ needs.get-latest-tag.outputs.commit_sha }}"
+          CLANG_VERSION="${{ needs.build.outputs.clang_version }}"
+          XAPIAN_VERSION="${{ needs.build.outputs.xapian_version }}"
 
           # Clean up possible line breaks
           COMMIT_SHA=$(echo "$COMMIT_SHA" | tr -d '\n')
@@ -539,10 +537,10 @@ jobs:
               echo "Doxygen $RELEASE_TAG" Build"
               echo ""
               echo "**Build Details:**"
-              echo "- static clang Version: ${{ needs.build.outputs.clang_version }}"
+              echo "- static clang Version: $CLANG_VERSION"
               echo "- Platform: x86_64 Linux"
               echo "- Compilers: GCC-9 and Clang-9"
-              echo "- static xapian version: ${{ needs.build.outputs.xapian_version }}"
+              echo "- static xapian version: $XAPIAN_VERSION"
               echo "- without: doxywizard"
               echo "- Built in Ubuntu 20.04 container"
               echo ""
