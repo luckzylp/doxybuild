@@ -119,7 +119,7 @@ jobs:
       - name: Install core build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install jq curl ninja-build build-essential wget file bison flex
+          sudo apt-get install jq curl ninja-build build-essential wget file bison flex uuid-dev
           gcc -v
         if: startsWith(matrix.config.os,'ubuntu-')
 
@@ -333,7 +333,7 @@ jobs:
       - name: patch ninja
         shell: bash
         run: |
-          sed -i 's|/usr/local/lib/libxapian\.a  /usr/lib/x86_64-linux-gnu/libz\.so|& -lrt|g' build/build.ninja
+          sed -i 's|/usr/local/lib/libxapian\.a  /usr/lib/x86_64-linux-gnu/libz\.so|& -lrt -luuid|g' build/build.ninja
 
       # Build step
       - name: Build
