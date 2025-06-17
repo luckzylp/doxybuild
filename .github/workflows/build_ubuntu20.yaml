@@ -52,13 +52,10 @@ jobs:
                 repo: 'doxygen',
                 ref: ref
               });
-              return response.data.sha;
+            	core.setOutput('commit_sha', response.data.sha);
             } catch (error) {
-              console.error(`Error fetching commit for ref '${ref}': ${error}`);
-              throw error;
+              core.setFailed(`Error fetching commit for ref '${ref}': ${error}`);
             }
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build:
     permissions:
@@ -211,7 +208,7 @@ jobs:
 
           # Specify xapian version to build
           XAPIAN_VERSION="1.4.21"
-          echo "XAPIAN_VERSION=$XAPIAN_VERSION" >> $GITHUB_ENV  # Export as environment variable
+          echo "xapian_version=$XAPIAN_VERSION" >> $GITHUB_ENV  # Export as environment variable
 
           # Download xapian source
           wget "https://oligarchy.co.uk/xapian/${XAPIAN_VERSION}/xapian-core-${XAPIAN_VERSION}.tar.xz"
@@ -268,7 +265,7 @@ jobs:
             CLANG_VERSION=$(echo "$release_tag" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
             echo "semantic version--> CLANG_VERSION=$CLANG_VERSION"
           fi
-          echo "CLANG_VERSION=$CLANG_VERSION" >> $GITHUB_ENV
+          echo "clang_version=$CLANG_VERSION" >> $GITHUB_ENV
 
           # Use release_tag variable directly instead of step output (fixes invalid reference)
           assets=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
@@ -524,6 +521,12 @@ jobs:
           # Clean up possible line breaks
           COMMIT_SHA=$(echo "$COMMIT_SHA" | tr -d '\n')
 
+          # Validate required values
+          if [ -z "$COMMIT_SHA" ]; then
+            echo "::error::COMMIT_SHA is empty, cannot create tag"
+            exit 1
+          fi
+
           # Create tag if doesn't exist
           if ! git rev-parse "$RELEASE_TAG" >/dev/null 2>&1; then
               echo "Creating tag $RELEASE_TAG pointing to $COMMIT_SHA"
@@ -549,8 +552,6 @@ jobs:
               echo "- Clang-built Doxygen on ubuntu-20.04"
             } > release_notes.md
 
-          # Create prerelease targeting specific commit SHA
-          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \
               --title "Doxygen $RELEASE_TAG" \
               --notes-file release_notes.md \
