@@ -66,6 +66,9 @@ jobs:
     needs: get-latest-tag
     name: ${{ matrix.config.name }}
     runs-on: ubuntu-latest
+    outputs:
+      clang_version: ${{ steps.set_versions.outputs.clang_version }}
+      xapian_version: ${{ steps.set_versions.outputs.xapian_version }}
     container:
       image: ubuntu:20.04  # Use Ubuntu 20.04 container
       options: --user root
@@ -171,7 +174,6 @@ jobs:
           ref: ${{ needs.get-latest-tag.outputs.release_ref }}
           fetch-depth: 0
 
-
       - name: Install clang-9 (Clang builds only)
         run: |
           # Completely remove any existing LLVM/Clang installations
@@ -208,6 +210,7 @@ jobs:
 
           # Specify xapian version to build
           XAPIAN_VERSION="1.4.21"
+          echo "XAPIAN_VERSION=$XAPIAN_VERSION" >> $GITHUB_ENV  # Export as environment variable
 
           # Download xapian source
           wget "https://oligarchy.co.uk/xapian/${XAPIAN_VERSION}/xapian-core-${XAPIAN_VERSION}.tar.xz"
@@ -253,6 +256,10 @@ jobs:
             echo "::error::No ubuntu20.04 release found"
             exit 1
           fi
+
+          # Extract libclang version from release tag (assumes format ubuntu20.04-clang-v<version>-static)
+          CLANG_VERSION=$(echo "$release_tag" | sed -n 's/^.*clang-v$$[0-9.]*$$-static.*/\1/p')
+          echo "CLANG_VERSION=$CLANG_VERSION" >> $GITHUB_ENV  # Export as environment variable
 
           # Use release_tag variable directly instead of step output (fixes invalid reference)
           assets=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
@@ -412,7 +419,7 @@ jobs:
           if (NOT result EQUAL 0)
             message(FATAL_ERROR "Building internal documentation failed")
           endif()
-        if: matrix.config.name == 'Ubuntu Latest GCC Release x86_64'
+        if: matrix.config.name == 'Ubuntu 20.04 GCC Release x86_64'
 
       # Artifact preparation with new packaging structure
       - name: Prepare artifacts
@@ -521,9 +528,27 @@ jobs:
 
           # Create prerelease targeting specific commit SHA
           if ! gh release view $RELEASE_TAG >/dev/null 2>&1; then
+            {
+              echo "Doxygen $RELEASE_TAG" Build"
+              echo ""
+              echo "**Build Details:**"
+              echo "- static clang Version: ${{ needs.build.outputs.clang_version }}"
+              echo "- Platform: x86_64 Linux"
+              echo "- Compilers: GCC-9 and Clang-9"
+              echo "- static xapian version: ${{ needs.build.outputs.xapian_version }}"
+              echo "- without: doxywizard"
+              echo "- Built in Ubuntu 20.04 container"
+              echo ""
+              echo "**Artifacts:**"
+              echo "- GCC-built Doxygen on ubuntu-20.04"
+              echo "- Clang-built Doxygen on ubuntu-20.04"
+            } > release_notes.md
+
+          # Create prerelease targeting specific commit SHA
+          if ! gh release view $RELEASE_TAG >/dev/null 2>&1; then
             gh release create "$RELEASE_TAG" \
               --title "Doxygen $RELEASE_TAG" \
-              --notes "Automated build from official source" \
+              --notes-file release_notes.md \
               --target "$COMMIT_SHA" \
               --prerelease
           fi
