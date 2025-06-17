@@ -514,7 +514,7 @@ jobs:
         run: |
           CURRENT_TIME=$(date -u '+%Y%m%d%H%M%S')
           RELEASE_TAG="${{ needs.get-latest-tag.outputs.release_tag }}-$CURRENT_TIME"
-          COMMIT_SHA="${{ needs.get-latest-tag.outputs.commit_sha }}"
+          COMMIT_SHA=$(git rev-parse HEAD)
           CLANG_VERSION="${{ needs.build.outputs.clang_version }}"
           XAPIAN_VERSION="${{ needs.build.outputs.xapian_version }}"
 
