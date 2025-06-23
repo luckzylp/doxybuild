@@ -172,7 +172,7 @@ jobs:
           ref: ${{ needs.get-latest-tag.outputs.release_ref }}
           fetch-depth: 0
 
-      - name: Install clang-9 (Clang builds only)
+      - name: Install clang-10 (Clang builds only)
         run: |
           # Completely remove any existing LLVM/Clang installations
           apt-get remove --purge -y '^llvm-.*' '^clang-.*' '^libclang-.*' '^libllvm.*' || true
@@ -180,14 +180,14 @@ jobs:
           apt-get clean
           echo "All existing LLVM/Clang versions purged"
 
-          # Install Clang-9 and development tools
-          apt-get install -y clang-9 libclang-9-dev
+          # Install Clang-10 tools
+          apt-get install -y clang-10
 
-          # Set Clang-9 as default compiler
-          update-alternatives --install /usr/bin/clang clang /usr/bin/clang-9 100
-          update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-9 100
-          update-alternatives --install /usr/bin/cc cc /usr/bin/clang-9 100
-          update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-9 100
+          # Set Clang-10 as default compiler
+          update-alternatives --install /usr/bin/clang clang /usr/bin/clang-10 100
+          update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-10 100
+          update-alternatives --install /usr/bin/cc cc /usr/bin/clang-10 100
+          update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-10 100
 
           # Verify installation
           clang --version
@@ -535,7 +535,7 @@ jobs:
               echo "**Build Details:**"
               echo "- static clang Version: $CLANG_VERSION"
               echo "- Platform: x86_64 Linux"
-              echo "- Compilers: GCC-9 and Clang-9"
+              echo "- Compilers: GCC-9 and Clang-10"
               echo "- static xapian version: $XAPIAN_VERSION"
               echo "- without: doxywizard"
               echo "- Built in Ubuntu 20.04 container"
